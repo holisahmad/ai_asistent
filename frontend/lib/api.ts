@@ -64,6 +64,31 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Ubah `detail` dari respons error menjadi teks yang aman dirender.
+ * FastAPI mengirim validation error sebagai array objek ({type,loc,msg,...});
+ * merender objek itu langsung ke JSX memicu "Objects are not valid as a React child".
+ */
+function formatErrorDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (item && typeof item === "object") {
+        const record = item as { loc?: unknown; msg?: unknown };
+        const loc = Array.isArray(record.loc)
+          ? record.loc.filter((p) => p !== "body").join(".")
+          : "";
+        const msg = typeof record.msg === "string" ? record.msg : JSON.stringify(item);
+        return loc ? `${loc}: ${msg}` : msg;
+      }
+      return String(item);
+    });
+    if (parts.length) return parts.join("; ");
+  }
+  if (detail && typeof detail === "object") return JSON.stringify(detail);
+  return fallback;
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(init.headers);
@@ -75,8 +100,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      const body = (await res.json()) as { detail?: string };
-      detail = body.detail ?? detail;
+      const body = (await res.json()) as { detail?: unknown };
+      detail = formatErrorDetail(body.detail, detail);
     } catch {
       /* body non-JSON */
     }

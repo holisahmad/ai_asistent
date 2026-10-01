@@ -91,8 +91,20 @@ export default function DashboardPage() {
     e.preventDefault();
     setCreating(true);
     setError(null);
+    const name = newName.trim();
+    const slug = newSlug.trim().toLowerCase();
+    if (name.length === 0) {
+      setError("Nama workspace wajib diisi.");
+      setCreating(false);
+      return;
+    }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length < 3) {
+      setError("Slug minimal 3 karakter, hanya huruf kecil, angka, dan dash.");
+      setCreating(false);
+      return;
+    }
     try {
-      const ws = await createWorkspace(newName.trim(), newSlug.trim());
+      const ws = await createWorkspace(name, slug);
       setNewName("");
       setNewSlug("");
       setShowCreate(false);
@@ -198,6 +210,7 @@ export default function DashboardPage() {
                 }
               }}
               required
+              maxLength={200}
               className="mt-1 block rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
               placeholder="Tim Produk"
             />
@@ -208,7 +221,10 @@ export default function DashboardPage() {
               value={newSlug}
               onChange={(e) => setNewSlug(e.target.value)}
               required
+              minLength={3}
+              maxLength={100}
               pattern="[a-z0-9]+(-[a-z0-9]+)*"
+              title="huruf kecil, angka, dan dash; minimal 3 karakter"
               className="mt-1 block rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
               placeholder="tim-produk"
             />
