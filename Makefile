@@ -1,4 +1,4 @@
-.PHONY: help infra infra-down install api worker web lint typecheck test test-db migrate migration smoke clean
+.PHONY: help infra infra-down install api worker web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench
 
 help:
 	@echo "AI Knowledge Assistant — perintah utama:"
@@ -15,6 +15,13 @@ help:
 	@echo "  make typecheck     mypy (core, backend, worker) + tsc (frontend)"
 	@echo "  make test          pytest (core, backend, worker) + tsc (frontend)"
 	@echo "  make smoke         Cek /health/live dan /health/ready"
+	@echo "  make backup        Backup Postgres+MinIO ke ./backups/<timestamp>"
+	@echo "  make restore DIR=backups/<ts> [DB=nama]  Restore backup ke database"
+	@echo "  make restore-drill Backup lalu pulihkan ke DB scratch & bandingkan (PASS/FAIL)"
+	@echo "  make scan-secrets  Pindai pola kredensial pada file tracked git"
+	@echo "  make scan-deps     Audit dependensi Python (pip-audit) & Node (npm audit)"
+	@echo "  make eval          Evaluasi kualitas RAG (ARGS='--write' untuk laporan)"
+	@echo "  make bench         Benchmark p50/p95/p99 (ARGS='--iterations 50')"
 
 infra:
 	docker compose up -d --wait
@@ -66,6 +73,28 @@ test:
 smoke:
 	curl -fsS http://localhost:8000/health/live && echo
 	curl -fsS http://localhost:8000/health/ready && echo
+
+backup:
+	./scripts/backup.sh
+
+restore:
+	@if [ -z "$(DIR)" ]; then echo "Pemakaian: make restore DIR=backups/<timestamp> [DB=nama]"; exit 1; fi
+	./scripts/restore.sh "$(DIR)" $(DB)
+
+restore-drill:
+	./scripts/restore_drill.sh
+
+scan-secrets:
+	./scripts/scan_secrets.sh
+
+scan-deps:
+	./scripts/scan_deps.sh
+
+eval:
+	uv run --project backend python scripts/eval_rag.py $(ARGS)
+
+bench:
+	uv run --project backend python scripts/bench.py $(ARGS)
 
 clean:
 	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true

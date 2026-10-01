@@ -20,10 +20,41 @@ from ai_asistent_core.config import get_settings
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
+# Kata fungsi umum (Indonesia + Inggris) yang tidak membawa sinyal retrieval.
+# Tanpa ini, kata seperti "yang"/"dan"/"adalah" membuat dokumen tak relevan
+# tetap tampak cocok (false positive) pada embedding bag-of-words maupun
+# heuristik LLM lokal.
+_STOPWORDS = frozenset(
+    {
+        # Indonesia
+        "ada", "adalah", "agar", "akan", "anda", "atau", "bagi", "bahwa",
+        "bila", "bisa", "dalam", "dan", "dapat", "dari", "dengan", "di",
+        "dia", "ini", "itu", "jika", "juga", "karena", "ke", "lagi", "maka",
+        "maupun", "memang", "namun", "oleh", "pada", "para", "per", "secara",
+        "sebagai", "sebuah", "sedang", "seperti", "serta", "setelah", "sudah",
+        "supaya", "telah", "tentang", "tersebut", "terhadap", "untuk", "yaitu",
+        "yang",
+        # Inggris
+        "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
+        "has", "have", "in", "into", "is", "it", "its", "of", "on", "or",
+        "that", "the", "their", "then", "there", "these", "this", "to", "was",
+        "were", "which", "will", "with",
+    }
+)
+
 
 def _tokens(text: str) -> list[str]:
     """Tokenisasi sederhana: huruf/angka lowercase, panjang >= 2."""
     return [t for t in _TOKEN_RE.findall(text.lower()) if len(t) >= 2]
+
+
+def content_tokens(text: str) -> list[str]:
+    """Token bermakna: tokenisasi biasa tanpa stopword fungsi umum (ID+EN).
+
+    Dipakai bersama oleh embedding lokal dan heuristik LLM stub agar kata
+    fungsi tidak dianggap bukti relevansi.
+    """
+    return [t for t in _tokens(text) if t not in _STOPWORDS]
 
 
 def _bucket(token: str, dim: int) -> int:
@@ -54,7 +85,7 @@ class LocalHashEmbedding:
         vectors: list[list[float]] = []
         for text in texts:
             raw = [0.0] * self.dim
-            for token in _tokens(text):
+            for token in content_tokens(text):
                 raw[_bucket(token, self.dim)] += 1.0
             norm = math.sqrt(sum(v * v for v in raw)) or 1.0
             vectors.append([v / norm for v in raw])

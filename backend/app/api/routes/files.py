@@ -10,6 +10,7 @@ import hashlib
 from typing import Annotated
 
 from ai_asistent_core.config import get_settings
+from ai_asistent_core.guards import scan_upload
 from ai_asistent_core.models import FILE_STATUSES, File, FileVersion, IngestionJob, utcnow
 from ai_asistent_core.storage import get_storage, object_key
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
@@ -20,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app import audit as audit_mod
 from app.deps import CurrentUser, DbSession, audit, require_role
+from app.idempotency import IdempotencyKeyHeader, hash_request, lookup, store
 from app.queue import enqueue_ingest
 from app.schemas import FileOut, FileStatusOut
 
@@ -113,15 +115,29 @@ def upload_file(
     current: CurrentUser,
     db: DbSession,
     file: Annotated[UploadFile, FileParam(description="File yang diupload")],
+    idempotency_key: IdempotencyKeyHeader = None,
     role: str = Depends(require_role("contributor")),
 ) -> FileOut:
-    """Upload file (contributor+). Dedup: isi identik di workspace → 409."""
+    """Upload file (contributor+). Dedup: isi identik di workspace → 409.
+
+    `Idempotency-Key` opsional: retry dengan kunci sama mengembalikan
+    respons tersimpan tanpa membuat duplikat (Fase 9).
+    """
     if not file.filename:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Filename required")
     filename = file.filename
 
+    # Idempotensi: respons tersimpan untuk (user, endpoint, key) yang sama.
+    if idempotency_key:
+        cached = lookup(db, user_id=current.id, endpoint="POST /files", key=idempotency_key)
+        if cached is not None:
+            return FileOut(**cached)
+
     data = _read_bounded(file)
     ext, mime = _validate_size_and_ext(filename, len(data))
+    rejected = scan_upload(filename, data)
+    if rejected is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Upload ditolak: {rejected}")
     checksum = hashlib.sha256(data).hexdigest()
 
     dedup = db.execute(
@@ -185,10 +201,21 @@ def upload_file(
          "user_id": current.id, "target": filename, "size": len(data)}
     )
 
+    result = _file_out(file_row, version.storage_key)
+    if idempotency_key:
+        store(
+            db,
+            user_id=current.id,
+            endpoint="POST /files",
+            key=idempotency_key,
+            response=result.model_dump(),
+            request_hash=hash_request(checksum.encode("ascii")),
+        )
+
     # Commit sebelum enqueue agar worker tidak balapan dengan transaksi DB.
     db.commit()
     enqueue_ingest(file_row.id, job.id)
-    return _file_out(file_row, version.storage_key)
+    return result
 
 
 @router.get("", response_model=list[FileOut])

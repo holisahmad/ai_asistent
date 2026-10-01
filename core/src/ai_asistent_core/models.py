@@ -286,9 +286,11 @@ class Message(TimestampMixin, Base):
     # role: user | assistant
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    # Fase 6: "grounded" | "no_answer" (belum ada web fallback)
+    # Fase 6: "grounded" | "no_answer" | "grounded_web"
     answer_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
     answer_meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Fase 8: umpan balik pengguna untuk jawaban assistant (up | down)
+    feedback: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     chat: Mapped[Chat] = relationship(back_populates="messages")
     citations: Mapped[list["Citation"]] = relationship(
@@ -320,6 +322,29 @@ class Citation(TimestampMixin, Base):
     url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     message: Mapped[Message] = relationship(back_populates="citations")
+
+
+class IdempotencyKey(Base):
+    """Kunci idempotensi request tulis (Fase 9).
+
+    Retry klien dengan `Idempotency-Key` yang sama mengembalikan respons
+    tersimpan, bukan membuat resource duplikat.
+    """
+
+    __tablename__ = "idempotency_keys"
+    __table_args__ = (
+        UniqueConstraint("user_id", "endpoint", "key", name="uq_idempotency_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    endpoint: Mapped[str] = mapped_column(String(200), nullable=False)
+    key: Mapped[str] = mapped_column(String(200), nullable=False)
+    request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    response_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True, nullable=False
+    )
 
 
 class WebSearchLog(Base):

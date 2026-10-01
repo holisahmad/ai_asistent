@@ -8,9 +8,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.api.routes import auth, chat, files, health, workspaces
+from app.api.routes import auth, chat, files, health, ops, workspaces
 from app.audit import configure_audit_logging
 from app.logging import configure_logging
+from app.observability import install_middlewares
 
 
 @asynccontextmanager
@@ -33,9 +34,13 @@ def create_app() -> FastAPI:
         allow_origins=csv_list(get_settings().cors_origins_csv),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+        expose_headers=["X-Request-ID", "Retry-After"],
     )
+    install_middlewares(app)
+
     app.include_router(health.router)
+    app.include_router(ops.router)
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(workspaces.router, prefix="/api/v1")
     app.include_router(files.router, prefix="/api/v1")

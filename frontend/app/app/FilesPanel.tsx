@@ -33,6 +33,8 @@ export default function FilesPanel({ workspaceId, canContribute, canDelete }: Pr
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -94,6 +96,12 @@ export default function FilesPanel({ workspaceId, canContribute, canDelete }: Pr
   }
 
   const accepted = ".pdf,.docx,.pptx,.xlsx,.txt,.md,.csv,.html,.json";
+
+  const visible = files.filter((f) => {
+    const matchesQuery = f.filename.toLowerCase().includes(query.trim().toLowerCase());
+    const matchesStatus = statusFilter === "all" || f.status === statusFilter;
+    return matchesQuery && matchesStatus;
+  });
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
@@ -160,13 +168,52 @@ export default function FilesPanel({ workspaceId, canContribute, canDelete }: Pr
         </p>
       )}
 
+      {files.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor="doc-search">
+            Cari dokumen
+          </label>
+          <input
+            id="doc-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari nama dokumen…"
+            className="min-w-[12rem] flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-500"
+          />
+          <label className="sr-only" htmlFor="doc-status">
+            Filter status
+          </label>
+          <select
+            id="doc-status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100"
+          >
+            {["all", "queued", "processing", "indexed", "failed", "deleted"].map((s) => (
+              <option key={s} value={s}>
+                {s === "all" ? "semua status" : s}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-slate-500">
+            {visible.length}/{files.length}
+          </span>
+        </div>
+      )}
+
       <ul className="mt-4 divide-y divide-slate-800">
         {files.length === 0 && (
           <li className="py-6 text-center text-sm text-slate-500">
             Belum ada dokumen. Unggah file agar bisa ditanyakan di chat.
           </li>
         )}
-        {files.map((f) => (
+        {files.length > 0 && visible.length === 0 && (
+          <li className="py-6 text-center text-sm text-slate-500">
+            Tidak ada dokumen yang cocok dengan filter.
+          </li>
+        )}
+        {visible.map((f) => (
           <li key={f.id} className="flex flex-wrap items-center gap-3 py-3">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm text-slate-100">{f.filename}</p>

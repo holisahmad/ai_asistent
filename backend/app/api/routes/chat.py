@@ -27,6 +27,7 @@ from app.schemas import (
     ChatDetailOut,
     ChatOut,
     CitationOut,
+    FeedbackIn,
     MessageOut,
 )
 
@@ -68,6 +69,7 @@ def _message_out(db: Session, m: Message) -> MessageOut:
         role=m.role,
         content=m.content,
         answer_kind=m.answer_kind,
+        feedback=m.feedback,
         citations=[
             CitationOut(
                 idx=c.idx,
@@ -208,6 +210,38 @@ def chat_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/chats/{chat_id}/messages/{message_id}/feedback", response_model=MessageOut)
+def set_feedback(
+    workspace_id: str,
+    chat_id: str,
+    message_id: str,
+    payload: FeedbackIn,
+    current: CurrentUser,
+    db: DbSession,
+    role: str = Depends(require_role("viewer")),
+) -> MessageOut:
+    """Beri/hapus umpan balik (👍/👎) untuk satu jawaban assistant (viewer+)."""
+    chat = _get_chat_or_404(db, workspace_id, chat_id)
+    msg = db.execute(
+        select(Message).where(Message.id == message_id, Message.chat_id == chat.id)
+    ).scalar_one_or_none()
+    if msg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Message not found")
+    if msg.role != "assistant":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Hanya jawaban assistant")
+    msg.feedback = payload.feedback
+    audit(
+        db,
+        action="chat.feedback",
+        workspace_id=workspace_id,
+        user_id=current.id,
+        target=msg.id,
+        meta={"feedback": payload.feedback},
+    )
+    db.commit()
+    return _message_out(db, msg)
 
 
 @router.get("/chats", response_model=list[ChatOut])

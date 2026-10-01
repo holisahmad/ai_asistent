@@ -35,6 +35,19 @@ class CoreSettings(BaseSettings):
     # CORS untuk frontend (CSV origin; dipakai backend)
     cors_origins_csv: str = "http://localhost:3000"
 
+    # Fase 9: ketahanan panggilan eksternal
+    external_max_attempts: int = 3
+    external_retry_base_seconds: float = 0.5
+    external_retry_max_seconds: float = 8.0
+    breaker_failure_threshold: int = 5
+    breaker_recovery_seconds: float = 60.0
+
+    # Fase 9: perlindungan API
+    api_rate_limit_per_min: int = 120  # per user/token; 0 = nonaktif
+    api_rate_limit_burst: int = 0  # tambahan kuota sekali jalan (0 = tanpa burst)
+    metrics_token: str | None = None  # bila diset, /metrics butuh Bearer token ini
+    request_id_header: str = "X-Request-ID"
+
     # File JSONL backup untuk audit trail (opsional; kosong = disable)
     audit_log_file: str | None = None
 

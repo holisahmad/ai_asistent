@@ -120,6 +120,20 @@ jobs:
       - name: Build (termasuk typecheck)
         run: npm run build
 
+  security:
+    name: Security (secret & dependency scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Secret scan (blocking)
+        run: ./scripts/scan_secrets.sh
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Dependency audit Python (non-blocking)
+        run: uvx pip-audit --progress-spinner off
+        continue-on-error: true
+
   infra:
     name: Compose config valid
     runs-on: ubuntu-latest

@@ -10,8 +10,10 @@ import {
   downloadUrl,
   getChat,
   listChats,
+  sendFeedback,
   streamChat,
 } from "@/lib/api";
+import Markdown from "./Markdown";
 
 type Props = { workspaceId: string };
 
@@ -84,6 +86,8 @@ export default function ChatPanel({ workspaceId }: Props) {
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [lastQuestion, setLastQuestion] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const refreshChats = useCallback(async () => {
@@ -121,10 +125,34 @@ export default function ChatPanel({ workspaceId }: Props) {
     }
   }
 
+  async function copyMessage(m: Message) {
+    try {
+      await navigator.clipboard.writeText(m.content);
+      setCopiedId(m.id);
+      window.setTimeout(() => setCopiedId(null), 1500);
+    } catch {
+      setError("Gagal menyalin ke clipboard (izin browser).");
+    }
+  }
+
+  async function rate(m: Message, value: "up" | "down") {
+    if (!activeChatId) return;
+    const next = m.feedback === value ? null : value;
+    try {
+      const updated = await sendFeedback(workspaceId, activeChatId, m.id, next);
+      setMessages((prev) =>
+        prev.map((x) => (x.id === m.id ? { ...x, feedback: updated.feedback } : x))
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengirim umpan balik");
+    }
+  }
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const text = question.trim();
     if (!text || pending) return;
+    setLastQuestion(text);
 
     const abort = new AbortController();
     setError(null);
@@ -137,6 +165,7 @@ export default function ChatPanel({ workspaceId }: Props) {
         role: "user",
         content: text,
         answer_kind: null,
+        feedback: null,
         citations: [],
         created_at: new Date().toISOString(),
       },
@@ -160,6 +189,7 @@ export default function ChatPanel({ workspaceId }: Props) {
                 role: "assistant",
                 content: ev.text,
                 answer_kind: ev.answerKind,
+                feedback: null,
                 citations: ev.citations,
                 created_at: new Date().toISOString(),
               },
@@ -251,11 +281,57 @@ export default function ChatPanel({ workspaceId }: Props) {
                 }`}
               >
                 {m.role === "assistant" && (
-                  <div className="mb-2">
+                  <div className="mb-2 flex items-center justify-between gap-2">
                     <KindBadge kind={m.answer_kind} />
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => void copyMessage(m)}
+                        title="Salin jawaban"
+                        aria-label="Salin jawaban"
+                        className="rounded-md px-1.5 py-0.5 text-xs text-slate-400 hover:text-slate-200"
+                      >
+                        {copiedId === m.id ? "Tersalin ✓" : "Salin"}
+                      </button>
+                      <button
+                        onClick={() => void rate(m, "up")}
+                        title="Jawaban membantu"
+                        aria-label="Jawaban membantu"
+                        aria-pressed={m.feedback === "up"}
+                        className={`rounded-md px-1.5 py-0.5 text-xs ${
+                          m.feedback === "up"
+                            ? "text-emerald-300"
+                            : "text-slate-500 hover:text-slate-300"
+                        }`}
+                      >
+                        👍
+                      </button>
+                      <button
+                        onClick={() => void rate(m, "down")}
+                        title="Jawaban kurang tepat"
+                        aria-label="Jawaban kurang tepat"
+                        aria-pressed={m.feedback === "down"}
+                        className={`rounded-md px-1.5 py-0.5 text-xs ${
+                          m.feedback === "down"
+                            ? "text-red-300"
+                            : "text-slate-500 hover:text-slate-300"
+                        }`}
+                      >
+                        👎
+                      </button>
+                    </div>
                   </div>
                 )}
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
+                {m.role === "assistant" ? (
+                  <Markdown
+                    content={m.content}
+                    onCitation={(idx) => {
+                      const cit = m.citations.find((c) => c.idx === idx);
+                      if (cit) setSelectedCitation(cit);
+                    }}
+                  />
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
+                )}
                 {m.citations.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {m.citations.map((c) => (
@@ -339,9 +415,23 @@ export default function ChatPanel({ workspaceId }: Props) {
         )}
 
         {error && (
-          <p role="alert" className="border-t border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-            {error}
-          </p>
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 border-t border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300"
+          >
+            <span>{error}</span>
+            {lastQuestion && (
+              <button
+                onClick={() => {
+                  setError(null);
+                  setQuestion(lastQuestion);
+                }}
+                className="rounded-md border border-red-500/40 px-2 py-1 text-xs text-red-200 hover:bg-red-500/10"
+              >
+                Coba lagi
+              </button>
+            )}
+          </div>
         )}
 
         <form onSubmit={send} className="border-t border-slate-800 p-3">

@@ -1,0 +1,48 @@
+{
+  "name": "kb-retrieval-mini",
+  "version": 1,
+  "description": "Dataset evaluasi kualitas retrieval & answer (roadmap Fase 6/10). Kueri dengan expected_filename=null harus dijawab no-answer.",
+  "documents": [
+    {
+      "filename": "sla-insiden.md",
+      "content": "# SLA Insiden\n\nInsiden kritis wajib direspons dalam 15 menit oleh tim on-call. Eskalasi ke manajer engineering dilakukan bila insiden belum tuntas setelah 30 menit. Postmortem wajib dibuat maksimal 3 hari kerja setelah insiden kritis.\n"
+    },
+    {
+      "filename": "cuti-tahunan.md",
+      "content": "# Kebijakan Cuti\n\nJumlah cuti tahunan adalah 12 hari kerja per tahun kalender. Pengajuan cuti dilakukan melalui HRIS minimal 3 hari sebelum tanggal mulai. Sisa cuti tidak dapat diakumulasi ke tahun berikutnya.\n"
+    },
+    {
+      "filename": "akses-vpn.md",
+      "content": "# Akses VPN\n\nAkses VPN kantor menggunakan MFA dan berlaku 12 jam per sesi. Permintaan akun VPN diproses tim IT maksimal 2 hari kerja. Perangkat yang terhubung VPN wajib menjalankan endpoint protection.\n"
+    },
+    {
+      "filename": "reimbursement.md",
+      "content": "# Reimbursement Perjalanan Dinas\n\nBatas reimbursement perjalanan dinas domestik adalah 5 juta rupiah per trip. Kuitansi asli wajib dilampirkan melalui sistem finance maksimal 7 hari setelah perjalanan. Hotel di luar kota maksimal 900 ribu rupiah per malam.\n"
+    },
+    {
+      "filename": "deployment.md",
+      "content": "# Deployment Produksi\n\nDeployment ke produksi hanya diizinkan hari Selasa dan Kamis pukul 10.00 WIB. Setiap deploy wajib melewati pipeline CI hijau dan approval dua orang engineer. Rollback harus tersedia dalam 15 menit setelah deploy.\n"
+    },
+    {
+      "filename": "onboarding.md",
+      "content": "# Onboarding Karyawan Baru\n\nProgram onboarding berlangsung 2 minggu dan mencakup akses sistem utama, kelas kebijakan keamanan, serta pendampingan mentor. Karyawan baru mendapat akses repositori pada hari pertama setelah menandatangani NDA.\n"
+    }
+  ],
+  "queries": [
+    { "question": "berapa lama respons insiden kritis?", "expected_filename": "sla-insiden.md" },
+    { "question": "berapa lama eskalasi ke manajer saat insiden belum tuntas?", "expected_filename": "sla-insiden.md" },
+    { "question": "kapan postmortem wajib dibuat?", "expected_filename": "sla-insiden.md" },
+    { "question": "berapa jumlah cuti tahunan karyawan?", "expected_filename": "cuti-tahunan.md" },
+    { "question": "bagaimana cara mengajukan cuti lewat HRIS?", "expected_filename": "cuti-tahunan.md" },
+    { "question": "berapa lama sesi VPN kantor berlaku?", "expected_filename": "akses-vpn.md" },
+    { "question": "berapa hari permintaan akun VPN diproses?", "expected_filename": "akses-vpn.md" },
+    { "question": "berapa batas reimbursement perjalanan dinas domestik?", "expected_filename": "reimbursement.md" },
+    { "question": "berapa lama kuitansi reimbursement harus dilampirkan?", "expected_filename": "reimbursement.md" },
+    { "question": "hari apa deployment produksi diizinkan?", "expected_filename": "deployment.md" },
+    { "question": "berapa menit rollback harus tersedia setelah deploy?", "expected_filename": "deployment.md" },
+    { "question": "berapa lama program onboarding karyawan baru?", "expected_filename": "onboarding.md" },
+    { "question": "berapa harga tiket pesawat ke bali bulan depan?", "expected_filename": null },
+    { "question": "resep rendang padang yang enak", "expected_filename": null },
+    { "question": "siapa pemenang liga champion musim lalu?", "expected_filename": null }
+  ]
+}

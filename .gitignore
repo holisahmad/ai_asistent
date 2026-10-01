@@ -29,6 +29,10 @@ npm-debug.log*
 # Docker volumes / local data
 data/
 
+# Artefak backup & laporan hasil (jangan commit)
+backups/
+docs/reports/
+
 # Coverage
 .coverage
 htmlcov/

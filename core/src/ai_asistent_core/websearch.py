@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from ai_asistent_core.config import csv_list, get_settings
+from ai_asistent_core.resilience import RetryPolicy, call_with_retry, get_breaker
 
 logger = logging.getLogger("ai_asistent_core.websearch")
 
@@ -291,7 +292,23 @@ def web_search(
     provider = get_web_search_provider()
     if provider is None:
         return []
-    raw = provider.search(query, s.web_search_max_results)
+    breaker = get_breaker("web_search")
+    if not breaker.allow():
+        raise RuntimeError("Web search circuit breaker OPEN — coba lagi nanti")
+    try:
+        raw = call_with_retry(
+            lambda: provider.search(query, s.web_search_max_results),
+            policy=RetryPolicy(
+                attempts=s.external_max_attempts,
+                base_delay=s.external_retry_base_seconds,
+                max_delay=s.external_retry_max_seconds,
+            ),
+            retry_on=(httpx.HTTPError, OSError),
+        )
+    except Exception:
+        breaker.record_failure()
+        raise
+    breaker.record_success()
     allow = csv_list(s.web_search_domain_allowlist_csv)
     deny = csv_list(s.web_search_domain_denylist_csv)
     results: list[WebResult] = []

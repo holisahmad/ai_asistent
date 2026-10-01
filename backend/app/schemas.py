@@ -154,8 +154,19 @@ class MessageOut(BaseModel):
     role: str
     content: str
     answer_kind: str | None
+    feedback: str | None = None
     citations: list[CitationOut]
     created_at: datetime
+
+
+class FeedbackIn(BaseModel):
+    """Umpan balik jawaban assistant (Fase 8)."""
+
+    feedback: str | None = Field(
+        default=None,
+        pattern=r"^(up|down)$",
+        description="up | down | null untuk menghapus",
+    )
 
 
 class ChatOut(BaseModel):

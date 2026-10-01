@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from ai_asistent_core.config import get_settings
+from ai_asistent_core.injection import harden_context
 from ai_asistent_core.llm import NO_ANSWER, LLMProvider, _is_no_answer, get_llm_provider
 from ai_asistent_core.models import WebSearchLog
 from ai_asistent_core.retrieval import RetrievedChunk, retrieve
@@ -98,6 +99,11 @@ def _select_contexts(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
         selected.append(c)
         total += len(c.content)
     return selected
+
+
+def _context_texts(selected: list[RetrievedChunk]) -> list[str]:
+    """Teks konteks siap prompt: disanitasi & dibersihkan dari injeksi (Fase 9)."""
+    return [harden_context(c.content) for c in selected]
 
 
 def _web_allowed(allow_web: bool) -> bool:
@@ -218,7 +224,7 @@ def answer_question(
         return _no_answer()
 
     selected = _select_contexts(chunks)
-    result = llm.generate(question, [c.content for c in selected])
+    result = llm.generate(question, _context_texts(selected))
     text = result.text.strip()
     if not result.no_answer and text and text != NO_ANSWER:
         return RagAnswer(
@@ -274,7 +280,7 @@ def answer_stream(
             # sentinel tidak sempat terlihat di UI klien.
             held = ""
             try:
-                for delta in llm.stream_generate(question, [c.content for c in selected]):
+                for delta in llm.stream_generate(question, _context_texts(selected)):
                     deltas.append(delta)
                     held += delta
                     if len(held) <= len(NO_ANSWER) and NO_ANSWER.startswith(held.strip()):

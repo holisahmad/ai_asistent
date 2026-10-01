@@ -168,6 +168,7 @@ export type Message = {
   role: "user" | "assistant";
   content: string;
   answer_kind: string | null;
+  feedback: string | null;
   citations: Citation[];
   created_at: string;
 };
@@ -218,6 +219,17 @@ export const listChats = (wsId: string) =>
 
 export const getChat = (wsId: string, chatId: string) =>
   apiFetch<ChatDetail>(`/api/v1/workspaces/${wsId}/chats/${chatId}`);
+
+export const sendFeedback = (
+  wsId: string,
+  chatId: string,
+  messageId: string,
+  feedback: "up" | "down" | null
+) =>
+  apiFetch<Message>(
+    `/api/v1/workspaces/${wsId}/chats/${chatId}/messages/${messageId}/feedback`,
+    { method: "POST", body: JSON.stringify({ feedback }) }
+  );
 
 // --- Chat streaming (SSE via fetch POST) ---
 

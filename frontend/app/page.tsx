@@ -9,8 +9,8 @@ const ROADMAP_PHASES = [
   { id: 6, name: "Retrieval & RAG", done: true },
   { id: 7, name: "Web Fallback", done: true },
   { id: 8, name: "UI/UX", done: true },
-  { id: 9, name: "Production Hardening", done: false },
-  { id: 10, name: "Pilot & Scale", done: false },
+  { id: 9, name: "Production Hardening", done: true },
+  { id: 10, name: "Pilot & Scale", done: true },
 ];
 
 export default function Home() {
