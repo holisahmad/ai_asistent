@@ -6,7 +6,7 @@ const ROADMAP_PHASES = [
   { id: 3, name: "File Upload & Storage", done: true },
   { id: 4, name: "Ingestion & Parsing", done: true },
   { id: 5, name: "Chunking & Indexing", done: true },
-  { id: 6, name: "Retrieval & RAG", done: false },
+  { id: 6, name: "Retrieval & RAG", done: true },
   { id: 7, name: "Web Fallback", done: false },
   { id: 8, name: "UI/UX", done: false },
   { id: 9, name: "Production Hardening", done: false },

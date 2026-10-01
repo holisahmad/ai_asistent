@@ -1,7 +1,10 @@
 """Embedding adapter (Fase 5) — provider dapat diganti.
 
-- `local`: hash deterministik (blake2b → vektor unit) — tanpa API, cocok
-  untuk dev/test & jalur offline; kualitas semantik terbatas.
+- `local`: feature hashing bag-of-words deterministik (blake2b per token →
+  bucket) — tanpa API, cocok untuk dev/test & jalur offline. Teks yang
+  berbagi kata memiliki cosine similarity tinggi, sehingga ranking &
+  threshold retrieval tetap bermakna (bukan semantik penuh; produksi cukup
+  set `APP_EMBEDDING_PROVIDER=openai`).
 - `openai`: text-embedding-3-small (butuh APP_OPENAI_API_KEY).
 
 Interface `EmbeddingProvider` memungkinkan menambah Anthropic/Gemini/
@@ -10,9 +13,23 @@ model lokal (Ollama) tanpa mengubah pemanggil.
 
 import hashlib
 import math
+import re
 from typing import Protocol
 
 from ai_asistent_core.config import get_settings
+
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _tokens(text: str) -> list[str]:
+    """Tokenisasi sederhana: huruf/angka lowercase, panjang >= 2."""
+    return [t for t in _TOKEN_RE.findall(text.lower()) if len(t) >= 2]
+
+
+def _bucket(token: str, dim: int) -> int:
+    """Index bucket deterministik dari token via blake2b."""
+    digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big") % dim
 
 
 class EmbeddingProvider(Protocol):
@@ -24,7 +41,11 @@ class EmbeddingProvider(Protocol):
 
 
 class LocalHashEmbedding:
-    """Embedding deterministik berbasis hash — untuk dev/test."""
+    """Bag-of-words feature hashing — deterministik & shared-token aware.
+
+    Setiap token di-hash ke satu bucket (frekuensi diakumulasi), lalu
+    vektor dinormalisasi L2. Dua teks yang berbagi kata → cosine tinggi.
+    """
 
     def __init__(self, dim: int) -> None:
         self.dim = dim
@@ -32,8 +53,9 @@ class LocalHashEmbedding:
     def embed(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         for text in texts:
-            digest = hashlib.blake2b(text.encode("utf-8"), digest_size=64).digest()
-            raw = [digest[i % len(digest)] / 255.0 for i in range(self.dim)]
+            raw = [0.0] * self.dim
+            for token in _tokens(text):
+                raw[_bucket(token, self.dim)] += 1.0
             norm = math.sqrt(sum(v * v for v in raw)) or 1.0
             vectors.append([v / norm for v in raw])
         return vectors

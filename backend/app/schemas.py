@@ -113,3 +113,55 @@ class FileStatusOut(BaseModel):
 
     id: str
     status: str
+
+
+# --- Fase 6: chat & RAG ---
+
+
+class ChatCreateIn(BaseModel):
+    """Pertanyaan baru (chat dibuat otomatis; title dari pertanyaan)."""
+
+    question: str = Field(min_length=1, max_length=4000)
+    chat_id: str | None = Field(
+        default=None, description="Lanjutkan chat yang ada (opsional)"
+    )
+
+
+class CitationOut(BaseModel):
+    """Sitasi klikabel (file + locator + potongan pendukung)."""
+
+    idx: int
+    chunk_id: str
+    file_id: str
+    filename: str
+    locator_type: str
+    locator_start: int
+    locator_end: int
+    snippet: str
+    score: float
+
+
+class MessageOut(BaseModel):
+    """Pesan chat (user/assistant) + sitasi untuk jawaban assistant."""
+
+    id: str
+    role: str
+    content: str
+    answer_kind: str | None
+    citations: list[CitationOut]
+    created_at: datetime
+
+
+class ChatOut(BaseModel):
+    """Ringkasan chat untuk daftar."""
+
+    id: str
+    title: str
+    created_at: datetime
+    message_count: int
+
+
+class ChatDetailOut(ChatOut):
+    """Chat + seluruh pesan berurutan."""
+
+    messages: list[MessageOut]

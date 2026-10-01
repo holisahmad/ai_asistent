@@ -7,7 +7,7 @@ from ai_asistent_core.config import get_settings
 from fastapi import FastAPI
 
 from app import __version__
-from app.api.routes import auth, files, health, workspaces
+from app.api.routes import auth, chat, files, health, workspaces
 from app.audit import configure_audit_logging
 from app.logging import configure_logging
 
@@ -31,4 +31,5 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(workspaces.router, prefix="/api/v1")
     app.include_router(files.router, prefix="/api/v1")
+    app.include_router(chat.router, prefix="/api/v1")
     return app

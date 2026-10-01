@@ -5,9 +5,10 @@ Setiap test diakhiri TRUNCATE agar isolasi antar test terjaga.
 """
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
-from ai_asistent_core.db import get_engine
+from ai_asistent_core.db import get_engine, get_session_factory
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -19,9 +20,14 @@ _TABLES = (
     "memberships",
     "workspaces",
     "users",
+    "citations",
+    "messages",
+    "chats",
     "ingestion_jobs",
     "file_versions",
     "files",
+    "document_chunks",
+    "documents",
 )
 
 
@@ -42,6 +48,35 @@ def clean_db() -> Iterator[None]:
 def client_fixture() -> Iterator[TestClient]:
     with TestClient(create_app()) as c:
         yield c
+
+
+@pytest.fixture(name="ingest_mode")
+def ingest_mode_fixture(monkeypatch: Any) -> Any:
+    """Arahkan enqueue ke eksekusi inline (fungsi ingest langsung).
+
+    Dipakai test pipeline & test chat agar test deterministik tanpa
+    menjalankan proses worker terpisah.
+    """
+    import app.queue as queue_mod
+
+    calls: list[tuple[str, str]] = []
+
+    def _inline(file_id: str, job_id: str) -> bool:
+        calls.append((file_id, job_id))
+        session = get_session_factory()()
+        try:
+            from ai_asistent_core.pipeline import ingest_file
+
+            status = ingest_file(session, file_id, job_id)
+            session.commit()
+            return status == "indexed"
+        finally:
+            session.close()
+
+    # Patch di titik pemakaian (files.py sudah meng-import simbol ini langsung).
+    monkeypatch.setattr("app.api.routes.files.enqueue_ingest", _inline)
+    monkeypatch.setattr(queue_mod, "enqueue_ingest", _inline)
+    return calls
 
 
 @pytest.fixture(name="user_headers")

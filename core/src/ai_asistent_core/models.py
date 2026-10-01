@@ -250,3 +250,69 @@ class DocumentChunk(TimestampMixin, Base):
     )  # dim dari APP_EMBEDDING_DIM (default 384)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+CHAT_ROLES = ("user", "assistant")
+
+
+class Chat(TimestampMixin, Base):
+    """Sesi percakapan dalam satu workspace (batas ACL = workspace_id)."""
+
+    __tablename__ = "chats"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(500), default="Chat", nullable=False)
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="chat", cascade="all, delete-orphan", order_by="Message.created_at"
+    )
+
+
+class Message(TimestampMixin, Base):
+    """Satu pesan dalam chat; jawaban grounded disimpan di answer_meta_json."""
+
+    __tablename__ = "messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    chat_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chats.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    # role: user | assistant
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Fase 6: "grounded" | "no_answer" (belum ada web fallback)
+    answer_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    answer_meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    chat: Mapped[Chat] = relationship(back_populates="messages")
+    citations: Mapped[list["Citation"]] = relationship(
+        back_populates="message", cascade="all, delete-orphan", order_by="Citation.idx"
+    )
+
+
+class Citation(TimestampMixin, Base):
+    """Sitasi klikabel: chunk sumber + locator + potongan teks pendukung."""
+
+    __tablename__ = "citations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    message_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    idx: Mapped[int] = mapped_column(Integer, nullable=False)  # urutan tampil [1], [2], ...
+    chunk_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    file_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    locator_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    locator_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    locator_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    snippet: Mapped[str] = mapped_column(Text, nullable=False)
+    score: Mapped[float] = mapped_column(default=0.0, nullable=False)
+
+    message: Mapped[Message] = relationship(back_populates="citations")

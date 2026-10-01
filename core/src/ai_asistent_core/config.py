@@ -44,6 +44,14 @@ class CoreSettings(BaseSettings):
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
 
+    # Fase 6: retrieval & RAG
+    retrieval_top_k: int = 6
+    retrieval_candidates: int = 24
+    retrieval_min_score: float = 0.05
+    llm_provider: str = "local"  # local | openai
+    openai_chat_model: str = "gpt-4o-mini"
+    rag_max_context_chars: int = 6000
+
     @property
     def database_url_sync(self) -> str:
         """Alias kompatibilitas (psycopg sync dipakai langsung)."""
@@ -53,4 +61,4 @@ class CoreSettings(BaseSettings):
 @lru_cache
 def get_settings() -> CoreSettings:
     """Return cached settings singleton."""
-    return CoreSettings()
+    return CoreSettings()  # pragma: no cover - trivial

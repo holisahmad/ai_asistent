@@ -1,7 +1,7 @@
 """Test pipeline end-to-end (Fase 4+5): upload → ingest → chunks+embedding.
 
-Memakai queue inline (rq:inline / local fallback) agar test deterministik
-tanpa menjalankan proses worker terpisah.
+Fixture `ingest_mode` (conftest) menjalankan pipeline inline agar
+perilaku deterministik tanpa proses worker terpisah.
 """
 
 import uuid
@@ -32,29 +32,10 @@ def _mk_ws(client: Any, headers: Headers) -> str:
     return r.json()["id"]
 
 
-@pytest.fixture(name="ingest_mode")
-def ingest_mode_fixture(monkeypatch: Any) -> Any:
-    """Arahkan enqueue ke eksekusi inline (fungsi ingest langsung)."""
-    import app.queue as queue_mod
-
-    calls: list[tuple[str, str]] = []
-
-    def _inline(file_id: str, job_id: str) -> bool:
-        calls.append((file_id, job_id))
-        session = get_session_factory()()
-        try:
-            from ai_asistent_core.pipeline import ingest_file
-
-            status = ingest_file(session, file_id, job_id)
-            session.commit()
-            return status == "indexed"
-        finally:
-            session.close()
-
-    # Patch di titik pemakaian (files.py sudah meng-import simbol ini langsung).
-    monkeypatch.setattr("app.api.routes.files.enqueue_ingest", _inline)
-    monkeypatch.setattr(queue_mod, "enqueue_ingest", _inline)
-    return calls
+@pytest.fixture(name="use_ingest")
+def use_ingest_fixture(ingest_mode: list[Any]) -> list[Any]:
+    """Alias eksplisit untuk fixture bersama (kompatibel test lama)."""
+    return ingest_mode
 
 
 def test_upload_to_indexed_pipeline(client: Any, ingest_mode: list[Any]) -> None:

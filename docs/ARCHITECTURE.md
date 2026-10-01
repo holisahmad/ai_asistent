@@ -18,6 +18,21 @@ Pertanyaan → hybrid retrieval (dense + keyword) + ACL filter → reranking
            → web fallback opsional (mode dikontrol, sumber ditandai eksternal)
 ```
 
+## Keputusan Fase 6 (Retrieval & RAG)
+
+| Keputusan | Alasan |
+| --- | --- |
+| Hybrid retrieval: dense pgvector + keyword FTS (`websearch_to_tsquery`, fallback ILIKE) | Roadmap minta dense + keyword; dua jalur menangkap kelemahan masing-masing (paraphrase vs istilah eksak). |
+| ACL difilter `workspace_id` di level SQL pada semua jalur retrieval | Roadmap: ACL sebelum konteks ke LLM — bukti tenant lain mustahil masuk prompt, bukan sekadar difilter setelahnya. |
+| Fusi deterministik: RRF per sumber + skor cosine terbobot (0.6/0.4) + threshold | Tanpa model eksternal (MVP); RRF stabil terhadap skala skor; deterministik agar test & audit reproducible. |
+| Embedding local diganti bag-of-words hashing (dari whole-text hash) | Whole-text blake2b membuat cosine antar teks berbeda ~konstan → threshold tak bermakna; bag-of-words memberi skor shared-token sehingga ranking & threshold berfungsi di dev/test. Produksi tetap disarankan `openai`. |
+| LLM adapter `local` stub / `openai` + sentinel `NO_ANSWER` | Pola sama dengan embeddings: dev/test deterministik tanpa API; ganti provider cukup env. `NO_ANSWER` memisahkan "model bilang tak cukup bukti" dari error. |
+| Prompt grounded: hanya dari konteks, sitasi [n], fakta/inferensi/ketidakpastian, no-answer wajib | Sesuai prinsip produk roadmap (grounded-first, source-aware). |
+| Streaming SSE (event meta/delta/done) | Kontrak API minimum `POST /chat/stream`; delta per kata simulasi token stream (adapter local deterministik), siap ditukar token asli OpenAI. |
+| Sitasi disimpan sebagai baris `citations` (chunk_id, file_id, locator, snippet, score) | Citation objects klikabel & tahan waktu: riwayat chat tetap punya provenance walau chunk ter-reindex. |
+| No-answer: pesan "Informasi belum tersedia" + `answer_kind=no_answer` + tanpa sitasi | Roadmap wajib menyatakan ketiadaan bukti; `answer_kind` memudahkan evaluasi & Web fallback Fase 7 memicu hanya bila flag ini aktif. |
+| Migrasi 0004: chats/messages/citations FK CASCADE, chat.user_id SET NULL | Riwayat milik workspace (bukan per-user) sesuai model ACL workspace; audit `chat.ask` tetap mencatat user. |
+
 ## Keputusan Fase 4+5 (Ingestion, Parsing, Chunking, Indexing)
 
 | Keputusan | Alasan |
@@ -74,8 +89,8 @@ Pertanyaan → hybrid retrieval (dense + keyword) + ACL filter → reranking
 
 ## Kontrak yang sudah terkunci (API minimum)
 
-`GET /health/live`, `GET /health/ready` — sudah ada. Sisanya (`/api/v1/auth/...`, `/api/v1/files`, `/api/v1/chat/stream`, dst.) dibangun per fase sesuai daftar API minimum di roadmap.
+`GET /health/live`, `GET /health/ready` — sudah ada. `POST /api/v1/workspaces/{id}/chat/stream`, `GET /api/v1/workspaces/{id}/chats`, `GET /api/v1/workspaces/{id}/chats/{chat_id}` — ada sejak Fase 6. Sisanya (`POST /api/v1/sources/url`, `GET /api/v1/jobs/{id}`, dst.) dibangun per fase sesuai daftar API minimum di roadmap.
 
-## Model data (rencana Fase 2-5)
+## Model data
 
-users, workspaces, memberships, roles, files, file_versions, documents, document_chunks, ingestion_jobs, chats, messages, citations, web_search_logs, audit_events — lihat daftar di roadmap.
+users, workspaces, memberships, roles, files, file_versions, documents, document_chunks, ingestion_jobs, chats, messages, citations, audit_events — sudah ada (Fase 2–6). `web_search_logs` mengikuti di Fase 7. Daftar lengkap di roadmap.

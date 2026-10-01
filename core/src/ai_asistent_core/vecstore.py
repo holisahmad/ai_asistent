@@ -16,7 +16,7 @@ from ai_asistent_core.config import get_settings
 
 @dataclass(frozen=True)
 class VectorMatch:
-    """Hasil pencarian vektor."""
+    """Hasil pencarian vektor (dengan filename untuk sitasi)."""
 
     chunk_id: str
     file_id: str
@@ -26,6 +26,7 @@ class VectorMatch:
     locator_start: int
     locator_end: int
     distance: float
+    filename: str = ""
 
 
 class VectorStoreProtocol(Protocol):
@@ -64,12 +65,14 @@ class PgVectorStore:
         rows = db.execute(
             text(
                 """
-                SELECT id, file_id, document_id, content, locator_type,
-                       locator_start, locator_end,
-                       embedding <=> CAST(:vec AS vector) AS distance
-                FROM document_chunks
-                WHERE workspace_id = :ws_id AND embedding IS NOT NULL
-                ORDER BY embedding <=> CAST(:vec AS vector)
+                SELECT c.id, c.file_id, c.document_id, c.content, c.locator_type,
+                       c.locator_start, c.locator_end,
+                       c.embedding <=> CAST(:vec AS vector) AS distance,
+                       COALESCE(f.filename, '') AS filename
+                FROM document_chunks c
+                LEFT JOIN files f ON f.id = c.file_id
+                WHERE c.workspace_id = :ws_id AND c.embedding IS NOT NULL
+                ORDER BY c.embedding <=> CAST(:vec AS vector)
                 LIMIT :k
                 """
             ),
@@ -85,6 +88,7 @@ class PgVectorStore:
                 locator_start=r["locator_start"],
                 locator_end=r["locator_end"],
                 distance=float(r["distance"]),
+                filename=r["filename"],
             )
             for r in rows
         ]

@@ -2,13 +2,14 @@
 
 Asisten AI knowledge base perusahaan: grounded-first, source-aware, multi-tenant, dan siap produksi. Panduan lengkap ada di [roadmap.md](roadmap.md).
 
-## Status: Fase 1–5 selesai ✅
+## Status: Fase 1–6 selesai ✅
 
 - **Fase 1 — Foundation**: struktur project, infra Docker, health checks, CI, tooling kualitas.
 - **Fase 2 — Auth & Workspace**: registrasi/login/logout, session token, multi-tenant workspace, RBAC (admin/editor/contributor/viewer), audit trail, migrasi Alembic.
 - **Fase 3 — File Upload & Storage**: upload PDF/DOCX/PPTX/XLSX/TXT/MD/CSV/HTML/JSON, validasi ukuran & ekstensi, checksum sha256 dedup, MinIO + signed URL, status queued/processing/indexed/failed, cancel/delete/reindex.
 - **Fase 4 — Ingestion & Parsing**: parser per format (PDF halaman, DOCX heading/tabel, PPTX slide, XLSX sheet, TXT/MD char, CSV blok baris) di worker RQ; locator page/slide/sheet/row/char sebagai dasar sitasi; job idempotent via Redis.
 - **Fase 5 — Chunking & Indexing**: chunk token-aware (512 tok, overlap 64) yang mempertahankan locator, embedding adapter (local hash / OpenAI), vector store **pgvector** (cosine, IVFFlat), pipeline worker end-to-end → status `indexed`.
+- **Fase 6 — Retrieval & RAG**: hybrid retrieval (dense pgvector + keyword FTS Postgres) dengan fusi skor deterministik (RRF + cosine) dan threshold; ACL workspace difilter di SQL sebelum konteks ke LLM; LLM adapter (local stub / OpenAI) dengan prompt grounded; jawaban streaming SSE dengan citation objects klikabel; no-answer "informasi belum tersedia"; chats/messages/citations tersimpan.
 
 | Komponen | Teknologi | Port dev |
 | --- | --- | --- |
@@ -55,27 +56,30 @@ ai_asistent/
 ├── core/             # Package bersama (uv workspace): ai_asistent_core
 │   └── src/ai_asistent_core/
 │       ├── config.py     # settings inti (env APP_*, satu sumber)
-│       ├── models.py     # semua model SQLAlchemy + pgvector Vector
+│       ├── models.py     # semua model SQLAlchemy + pgvector Vector + chats/messages/citations
 │       ├── db.py         # engine/session/redis (lazy) + koneksi RQ biner
 │       ├── storage.py    # adapter MinIO (StorageProtocol)
 │       ├── parsers.py    # PDF/DOCX/PPTX/XLSX/TXT/MD/CSV → Section+locator
 │       ├── chunking.py   # chunk token-aware + overlap
-│       ├── embeddings.py # adapter local hash / OpenAI
-│       └── vecstore.py   # adapter pgvector (VectorStoreProtocol)
+│       ├── embeddings.py # adapter local (bag-of-words hash) / OpenAI
+│       ├── vecstore.py   # adapter pgvector (VectorStoreProtocol)
+│       ├── retrieval.py  # hybrid: dense + keyword FTS + fusi RRF (ACL di SQL)
+│       ├── llm.py        # adapter LLM: local stub / OpenAI (prompt grounded)
+│       ├── rag.py        # orkestrasi: retrieve → LLM → jawaban + sitasi
+│       └── models.py     # + chats, messages, citations (Fase 6)
 ├── backend/          # FastAPI: app/, migrations/, tests/
 │   ├── app/
-│   │   ├── api/routes/   # health, auth, workspaces, files
+│   │   ├── api/routes/   # health, auth, workspaces, files, chat
 │   │   ├── deps.py           # current user, RBAC require_role, audit
 │   │   ├── queue.py          # enqueue RQ (graceful bila Redis down)
 │   │   ├── security.py       # bcrypt + token opaque
 │   │   ├── audit.py          # JSONL audit sink
 │   │   ├── schemas.py        # Pydantic request/response
 │   │   └── main.py           # app factory
-│   └── migrations/       # Alembic 0001-0003 (pgvector, documents, chunks)
+│   └── migrations/       # Alembic 0001-0004 (pgvector, chats/messages/citations)
 ├── worker/           # RQ worker (src layout)
 │   └── src/worker/
-│       ├── pipeline.py   # ingest_file: get→parse→chunk→embed→index (idempotent)
-│       ├── jobs.py       # registry job (whitelist)
+│       ├── jobs.py       # registry job → core.pipeline.ingest_file (idempotent)
 │       └── main.py       # entrypoint `make worker`
 ├── frontend/         # Next.js App Router: app/, lib/
 ├── docs/             # catatan arsitektur & keputusan
@@ -86,7 +90,7 @@ ai_asistent/
 
 Backend & worker berbagi package `core` via **uv workspace** — model dan pipeline tidak diduplikasi, worker tetap bisa di-deploy terpisah.
 
-## API — Fase 2 (auth & workspace)
+## API (Fase 2–6: auth, workspace, files, chat)
 
 | Method | Path | Akses |
 |---|---|---|
@@ -107,6 +111,9 @@ Backend & worker berbagi package `core` via **uv workspace** — model dan pipel
 | POST | `/api/v1/workspaces/{id}/files/{file_id}/cancel` | contributor+ (queued saja) |
 | DELETE | `/api/v1/workspaces/{id}/files/{file_id}` | editor+ (soft delete) |
 | POST | `/api/v1/workspaces/{id}/files/{file_id}/reindex` | contributor+ |
+| POST | `/api/v1/workspaces/{id}/chat/stream` | viewer+ (SSE: meta/delta/done, citations di `done`) |
+| GET | `/api/v1/workspaces/{id}/chats` | viewer+ (daftar chat) |
+| GET | `/api/v1/workspaces/{id}/chats/{chat_id}` | viewer+ (pesan + sitasi) |
 
 ## Prinsip yang dipegang (dari roadmap.md)
 
@@ -121,4 +128,4 @@ Salin `.env.example` → `.env`. Prefix variabel aplikasi: `APP_` (mis. `APP_DAT
 
 ## Langkah berikutnya
 
-Fase 6 (Retrieval & RAG: hybrid search, reranking, chat grounded dengan sitasi) → dst. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur end-to-end dan keputusan tiap fase.
+Fase 7 (Web fallback: mode internal-only/internal-plus-web, allowlist domain, sanitasi) → dst. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur end-to-end dan keputusan tiap fase.
