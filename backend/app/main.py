@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app import __version__
-from app.api.routes import auth, health, workspaces
+from app.api.routes import auth, files, health, workspaces
 from app.audit import configure_audit_logging
 from app.logging import configure_logging
 from app.settings import get_settings
@@ -30,4 +30,5 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(workspaces.router, prefix="/api/v1")
+    app.include_router(files.router, prefix="/api/v1")
     return app

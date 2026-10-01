@@ -13,7 +13,16 @@ from sqlalchemy import text
 from app.db import get_engine
 from app.main import create_app
 
-_TABLES = ("audit_events", "auth_sessions", "memberships", "workspaces", "users")
+_TABLES = (
+    "audit_events",
+    "auth_sessions",
+    "memberships",
+    "workspaces",
+    "users",
+    "ingestion_jobs",
+    "file_versions",
+    "files",
+)
 
 
 @pytest.fixture(autouse=True)

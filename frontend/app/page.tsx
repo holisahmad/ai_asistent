@@ -3,7 +3,7 @@ import Link from "next/link";
 const ROADMAP_PHASES = [
   { id: 1, name: "Foundation", done: true },
   { id: 2, name: "Auth & Workspace", done: true },
-  { id: 3, name: "File Upload & Storage", done: false },
+  { id: 3, name: "File Upload & Storage", done: true },
   { id: 4, name: "Ingestion & Parsing", done: false },
   { id: 5, name: "Chunking & Indexing", done: false },
   { id: 6, name: "Retrieval & RAG", done: false },

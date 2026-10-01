@@ -18,6 +18,19 @@ Pertanyaan → hybrid retrieval (dense + keyword) + ACL filter → reranking
            → web fallback opsional (mode dikontrol, sumber ditandai eksternal)
 ```
 
+## Keputusan Fase 3 (File Upload & Storage)
+
+| Keputusan | Alasan |
+| --- | --- |
+| Storage adapter (`StorageProtocol`) di `app/storage.py` | Roadmap: vendor dapat diganti; MinIO hari ini, S3/Qdrant-side storage lain tanpa menyentuh pemanggil. |
+| Validasi berbasis ekstensi allowlist (bukan MIME client) | MIME dari client mudah dipalsukan; ekstensi + magic-byte check penuh menyusul di Fase 4 saat parser menerima file. |
+| Dedup via checksum sha256 per workspace | Hemat storage & index; file identik antar-workspace tetap diizinkan (isolasi tenant). |
+| Object key hierarkis `workspaces/{ws}/files/{id}/v{n}/{filename}` | ACL per workspace mudah diterapkan level bucket; versioning eksplisit untuk reindex. |
+| Upload gagal storage → rollback DB | Tidak ada metadata yatim; object storage ditulis sebelum commit DB. |
+| Download via 307 ke presigned URL (15 menit) | API tidak memproksi byte file; TTL dari `APP_PRESIGN_EXPIRY_SECONDS`. |
+| Soft delete (`is_deleted` + status `deleted`) | Roadmap minta cancel/delete/retry/reindex; purge fisik & cleanup object menyusul di Fase 9. |
+| `_read_bounded` membaca max+1 byte | Upload > limit ditolak tanpa memuat seluruh isi ke memori. |
+
 ## Keputusan Fase 2 (Auth & Workspace)
 
 | Keputusan | Alasan |

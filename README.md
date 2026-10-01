@@ -2,10 +2,11 @@
 
 Asisten AI knowledge base perusahaan: grounded-first, source-aware, multi-tenant, dan siap produksi. Panduan lengkap ada di [roadmap.md](roadmap.md).
 
-## Status: Fase 1 & 2 selesai ✅
+## Status: Fase 1–3 selesai ✅
 
 - **Fase 1 — Foundation**: struktur project, infra Docker, health checks, CI, tooling kualitas.
 - **Fase 2 — Auth & Workspace**: registrasi/login/logout, session token, multi-tenant workspace, RBAC (admin/editor/contributor/viewer), audit trail, migrasi Alembic.
+- **Fase 3 — File Upload & Storage**: upload PDF/DOCX/PPTX/XLSX/TXT/MD/CSV/HTML/JSON, validasi ukuran & ekstensi, checksum sha256 dedup, MinIO + signed URL, status queued/processing/indexed/failed, cancel/delete/reindex.
 
 | Komponen | Teknologi | Port dev |
 | --- | --- | --- |
@@ -85,6 +86,13 @@ ai_asistent/
 | PATCH | `/api/v1/workspaces/{id}` | admin |
 | POST | `/api/v1/workspaces/{id}/members` | admin |
 | DELETE | `/api/v1/workspaces/{id}/members/{user_id}` | admin |
+| POST | `/api/v1/workspaces/{id}/files` | contributor+ (multipart, dedup 409) |
+| GET | `/api/v1/workspaces/{id}/files` | viewer+ (`?status=` filter) |
+| GET | `/api/v1/workspaces/{id}/files/{file_id}` | viewer+ |
+| GET | `/api/v1/workspaces/{id}/files/{file_id}/download` | viewer+ → 307 presigned URL |
+| POST | `/api/v1/workspaces/{id}/files/{file_id}/cancel` | contributor+ (queued saja) |
+| DELETE | `/api/v1/workspaces/{id}/files/{file_id}` | editor+ (soft delete) |
+| POST | `/api/v1/workspaces/{id}/files/{file_id}/reindex` | contributor+ |
 
 ## Prinsip yang dipegang (dari roadmap.md)
 

@@ -87,3 +87,29 @@ class WorkspaceDetailOut(WorkspaceOut):
     """Workspace + daftar anggota."""
 
     members: list[MemberOut]
+
+
+# --- Fase 3: files ---
+
+
+class FileOut(BaseModel):
+    """Metadata file; storage_key untuk debug, akses via /download."""
+
+    id: str
+    workspace_id: str
+    filename: str
+    size_bytes: int
+    mime_type: str
+    checksum_sha256: str
+    status: str
+    error: str | None
+    current_version: int
+    created_at: datetime
+    storage_key: str
+
+
+class FileStatusOut(BaseModel):
+    """Respons singkat perubahan status (cancel/delete/reindex)."""
+
+    id: str
+    status: str

@@ -1,4 +1,4 @@
-"""SQLAlchemy models — Fase 2 (auth & workspace).
+"""SQLAlchemy models — Fase 2 (auth & workspace) + Fase 3 (files).
 
 Skema mengikuti daftar model minimum roadmap; tabel files/documents/chats
 menyusul di Fase 3-6 dengan foreign key ke workspaces/users di sini.
@@ -125,3 +125,73 @@ def to_dict(obj: Any) -> dict[str, Any]:
         c.name: getattr(obj, c.name)
         for c in obj.__table__.columns
     }
+
+
+FILE_STATUSES = ("queued", "processing", "indexed", "failed", "deleted")
+JOB_TYPES = ("ingest", "index", "reindex")
+
+
+class File(TimestampMixin, Base):
+    """Metadata file per workspace; isi binary ada di object storage."""
+
+    __tablename__ = "files"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    uploaded_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_version: Mapped[int] = mapped_column(default=1, nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
+
+    versions: Mapped[list["FileVersion"]] = relationship(
+        back_populates="file", cascade="all, delete-orphan"
+    )
+
+
+class FileVersion(TimestampMixin, Base):
+    """Satu versi isi file + lokasi object storage."""
+
+    __tablename__ = "file_versions"
+    __table_args__ = (
+        UniqueConstraint("file_id", "version", name="uq_file_version"),
+        Index("ix_file_versions_checksum", "checksum_sha256"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    file_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("files.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    version: Mapped[int] = mapped_column(nullable=False)
+    checksum_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    file: Mapped[File] = relationship(back_populates="versions")
+
+
+class IngestionJob(TimestampMixin, Base):
+    """Status pekerjaan background (parse/embedding/index) per file."""
+
+    __tablename__ = "ingestion_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    file_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("files.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    job_type: Mapped[str] = mapped_column(String(20), nullable=False)  # ingest|index|reindex
+    status: Mapped[str] = mapped_column(String(20), default="queued", nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    file: Mapped[File] = relationship()
