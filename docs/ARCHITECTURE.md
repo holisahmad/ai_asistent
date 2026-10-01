@@ -18,6 +18,22 @@ Pertanyaan → hybrid retrieval (dense + keyword) + ACL filter → reranking
            → web fallback opsional (mode dikontrol, sumber ditandai eksternal)
 ```
 
+## Keputusan Fase 4+5 (Ingestion, Parsing, Chunking, Indexing)
+
+| Keputusan | Alasan |
+| --- | --- |
+| Package `core` bersama via uv workspace | Roadmap: worker terpisah dari API tapi butuh model/pipeline yang sama; uv workspace memberi satu lockfile tanpa publish package. |
+| Parser interface kecil (`Parser` → `Section`+locator) | OCR & transkripsi (roadmap Fase 4) tinggal menambah implementasi Parser baru; pemanggil tak berubah. |
+| Locator page/slide/sheet/row/char | Syarat sitasi roadmap; chunk mempertahankan locator section dominan. |
+| Worker idempotent: hapus document+chunk lama sebelum tulis ulang | Reindex aman dijalankan ulang (retry RQ 3x). |
+| Enqueue setelah commit DB (dan graceful bila Redis down) | Upload tidak gagal gara-gara queue; worker tidak balapan dengan transaksi API. |
+| Koneksi Redis biner khusus RQ (`get_rq_connection`) | RQ menyimpan payload pickle (bytes); `decode_responses=True` merusak deserialisasi. |
+| Estimasi token ≈4 karakter, target 512 + overlap 64 | MVP tanpa tokenizer eksternal; konfigurabel via `APP_CHUNK_*`, ganti tiktoken nanti tanpa ubah pipeline. |
+| Embedding adapter: `local` hash (default) / `openai` | Dev/test offline deterministik; produksi cukup set `APP_EMBEDDING_PROVIDER=openai` + API key. |
+| pgvector (cosine, IVFFlat lists=100) di `document_chunks.embedding` | MVP-first sesuai roadmap; `VectorStoreProtocol` siap diganti Qdrant. ACL difilter di query (workspace_id). |
+| Migrasi 0003: `CREATE EXTENSION vector` + tabel documents/document_chunks | Satu sumber skema: worker tidak punya migrasi sendiri. |
+| Smoke test nyata: upload→Redis→worker burst→pgvector terisi | Bukan hanya mock: pipeline terbukti jalan end-to-end di infra lokal. |
+
 ## Keputusan Fase 3 (File Upload & Storage)
 
 | Keputusan | Alasan |

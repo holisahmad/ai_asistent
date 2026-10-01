@@ -3,13 +3,13 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from ai_asistent_core.config import get_settings
 from fastapi import FastAPI
 
 from app import __version__
 from app.api.routes import auth, files, health, workspaces
 from app.audit import configure_audit_logging
 from app.logging import configure_logging
-from app.settings import get_settings
 
 
 @asynccontextmanager

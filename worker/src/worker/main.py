@@ -1,16 +1,13 @@
-"""Worker entrypoint.
-
-Jalankan dengan: make worker  (dari root project)
-"""
+"""Worker entrypoint — jalankan dengan `make worker`."""
 
 import logging
 import sys
 
-from redis import Redis
+from ai_asistent_core.config import get_settings
+from ai_asistent_core.db import get_rq_connection
 from rq import Worker
 
 from worker.jobs import JOBS
-from worker.settings import get_settings
 
 
 def main() -> None:
@@ -20,10 +17,10 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         stream=sys.stdout,
     )
-    connection = Redis.from_url(settings.redis_url, decode_responses=True)
-    worker = Worker(JOBS, connection=connection, name="worker-1")
+    connection = get_rq_connection()
+    worker = Worker(["default"], connection=connection, name="worker-1")
     logging.getLogger("worker.main").info(
-        "worker starting", extra={"queues": [settings.queue_name], "jobs": JOBS}
+        "worker starting jobs=%s", JOBS
     )
     worker.work()
 

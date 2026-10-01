@@ -2,12 +2,12 @@
 
 import re
 
+from ai_asistent_core.models import Membership, User, Workspace
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from app import audit as audit_mod
 from app.deps import CurrentUser, DbSession, audit, get_role, require_role
-from app.models import Membership, User, Workspace
 from app.schemas import (
     MemberAddIn,
     MemberOut,

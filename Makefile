@@ -4,16 +4,16 @@ help:
 	@echo "AI Knowledge Assistant — perintah utama:"
 	@echo "  make infra         Jalankan Postgres+Redis+MinIO (docker compose up -d --wait)"
 	@echo "  make infra-down    Hentikan infra"
-	@echo "  make install       Install deps backend+worker (uv) dan frontend (npm)"
+	@echo "  make install       Install semua workspace (uv sync di root) + npm install"
 	@echo "  make api           Jalankan backend API di :8000 (reload)"
 	@echo "  make worker        Jalankan RQ worker (queue: default)"
 	@echo "  make web           Jalankan frontend Next.js di :3000"
 	@echo "  make migrate       Jalankan migrasi Alembic (DB development)"
 	@echo "  make migration m='pesan'   Buat file migrasi baru"
 	@echo "  make test-db       (Sekali) buat & migrasi database test"
-	@echo "  make lint          Ruff check (backend & worker)"
-	@echo "  make typecheck     mypy (backend & worker) + tsc (frontend)"
-	@echo "  make test          pytest (backend & worker) + tsc (frontend)"
+	@echo "  make lint          Ruff (core, backend, worker)"
+	@echo "  make typecheck     mypy (core, backend, worker) + tsc (frontend)"
+	@echo "  make test          pytest (core, backend, worker) + tsc (frontend)"
 	@echo "  make smoke         Cek /health/live dan /health/ready"
 
 infra:
@@ -23,8 +23,7 @@ infra-down:
 	docker compose down
 
 install:
-	cd backend && uv sync
-	cd worker && uv sync
+	uv sync
 	cd frontend && npm install
 
 api:
@@ -48,15 +47,18 @@ test-db:
 	cd backend && APP_DATABASE_URL="postgresql+psycopg://ai_assistant:ai_assistant@localhost:5433/ai_assistant_test" uv run alembic upgrade head
 
 lint:
+	cd core && uv run ruff check .
 	cd backend && uv run ruff check .
 	cd worker && uv run ruff check .
 
 typecheck:
+	cd core && uv run mypy src
 	cd backend && uv run mypy app
-	cd worker && uv run mypy worker
+	cd worker && uv run mypy src
 	cd frontend && npx tsc --noEmit
 
 test:
+	cd core && uv run pytest -q
 	cd backend && uv run pytest -q
 	cd worker && uv run pytest -q
 	cd frontend && npx tsc --noEmit

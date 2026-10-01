@@ -1,21 +1,15 @@
-"""Application settings via pydantic-settings.
-
-Semua config dibaca dari environment / file .env di root project.
-Tidak ada secret yang di-commit.
-"""
+"""Konfigurasi bersama (workspace-level) untuk backend & worker."""
 
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# .env di root project (../ dari backend/)
 _ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
 
 
-class Settings(BaseSettings):
-    """Strongly-typed application configuration."""
+class CoreSettings(BaseSettings):
+    """Konfigurasi inti yang dipakai API & worker."""
 
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV if _ROOT_ENV.exists() else None,
@@ -25,9 +19,9 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     log_level: str = "INFO"
-
     database_url: str = "postgresql+psycopg://ai_assistant:ai_assistant@localhost:5433/ai_assistant"
     redis_url: str = "redis://localhost:6380/0"
+    queue_name: str = "default"
 
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "minioadmin"
@@ -35,22 +29,28 @@ class Settings(BaseSettings):
     minio_bucket: str = "ai-assistant"
     minio_secure: bool = False
 
+    max_upload_bytes: int = 100 * 1024 * 1024
+    presign_expiry_seconds: int = 900
+
     # File JSONL backup untuk audit trail (opsional; kosong = disable)
     audit_log_file: str | None = None
 
-    # Batas upload (Fase 3)
-    max_upload_bytes: int = 100 * 1024 * 1024  # 100 MB
-    presign_expiry_seconds: int = 900  # umur signed URL: 15 menit
+    # Fase 4/5: pipeline ingestion & indexing
+    chunk_target_tokens: int = 512
+    chunk_overlap_tokens: int = 64
+    embedding_dim: int = 384
+    embedding_batch_size: int = 32
+    embedding_provider: str = "local"  # local | openai
+    openai_api_key: str | None = None
+    openai_embedding_model: str = "text-embedding-3-small"
 
-    @field_validator("max_upload_bytes", "presign_expiry_seconds")
-    @classmethod
-    def _positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("harus > 0")
-        return v
+    @property
+    def database_url_sync(self) -> str:
+        """Alias kompatibilitas (psycopg sync dipakai langsung)."""
+        return self.database_url
 
 
 @lru_cache
-def get_settings() -> Settings:
+def get_settings() -> CoreSettings:
     """Return cached settings singleton."""
-    return Settings()
+    return CoreSettings()

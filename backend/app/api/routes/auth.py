@@ -2,13 +2,13 @@
 
 from datetime import UTC, datetime
 
+from ai_asistent_core.models import AuthSession, User
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit as audit_mod
 from app.deps import CurrentUser, DbSession, audit
-from app.models import AuthSession, User
 from app.schemas import LoginIn, RegisterIn, SessionOut, UserOut
 from app.security import (
     hash_password,

@@ -1,0 +1,11 @@
+[project]
+name = "ai-asistent-workspace"
+version = "0.1.0"
+description = "AI Knowledge Assistant — uv workspace (core, backend, worker)"
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = ["core", "backend", "worker"]
+
+[tool.uv.sources]
+ai-asistent-core = { workspace = true }

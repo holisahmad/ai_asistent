@@ -6,6 +6,27 @@ on:
   pull_request:
 
 jobs:
+  core:
+    name: Core (lint, types, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check .
+      - name: Typecheck
+        run: uv run mypy src
+      - name: Tests
+        run: uv run pytest -q
+
   backend:
     name: Backend (lint, types, tests)
     runs-on: ubuntu-latest
@@ -14,7 +35,7 @@ jobs:
         working-directory: backend
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: ai_assistant
           POSTGRES_PASSWORD: ai_assistant
@@ -77,7 +98,7 @@ jobs:
       - name: Lint
         run: uv run ruff check .
       - name: Typecheck
-        run: uv run mypy worker
+        run: uv run mypy src
       - name: Tests
         run: uv run pytest -q
 

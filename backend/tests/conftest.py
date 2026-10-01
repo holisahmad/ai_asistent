@@ -7,10 +7,10 @@ Setiap test diakhiri TRUNCATE agar isolasi antar test terjaga.
 from collections.abc import Iterator
 
 import pytest
+from ai_asistent_core.db import get_engine
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.db import get_engine
 from app.main import create_app
 
 _TABLES = (

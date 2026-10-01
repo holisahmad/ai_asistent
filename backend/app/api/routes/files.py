@@ -9,6 +9,9 @@
 import hashlib
 from typing import Annotated
 
+from ai_asistent_core.config import get_settings
+from ai_asistent_core.models import FILE_STATUSES, File, FileVersion, IngestionJob, utcnow
+from ai_asistent_core.storage import get_storage, object_key
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi import File as FileParam
 from fastapi.responses import RedirectResponse
@@ -17,10 +20,8 @@ from sqlalchemy.orm import Session
 
 from app import audit as audit_mod
 from app.deps import CurrentUser, DbSession, audit, require_role
-from app.models import FILE_STATUSES, File, FileVersion, IngestionJob, utcnow
+from app.queue import enqueue_ingest
 from app.schemas import FileOut, FileStatusOut
-from app.settings import get_settings
-from app.storage import get_storage, object_key
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/files", tags=["files"])
 
@@ -157,7 +158,8 @@ def upload_file(
         mime_type=mime,
     )
     db.add(version)
-    db.add(IngestionJob(file_id=file_row.id, job_type="ingest", status="queued"))
+    job = IngestionJob(file_id=file_row.id, job_type="ingest", status="queued")
+    db.add(job)
 
     # Simpan ke object storage sebelum commit DB; gagal storage → rollback DB.
     try:
@@ -182,6 +184,10 @@ def upload_file(
         {"action": "file.upload", "workspace_id": workspace_id,
          "user_id": current.id, "target": filename, "size": len(data)}
     )
+
+    # Commit sebelum enqueue agar worker tidak balapan dengan transaksi DB.
+    db.commit()
+    enqueue_ingest(file_row.id, job.id)
     return _file_out(file_row, version.storage_key)
 
 
@@ -318,7 +324,8 @@ def reindex_file(
         raise HTTPException(status.HTTP_409_CONFLICT, "File is already queued")
     f.status = "queued"
     f.error = None
-    db.add(IngestionJob(file_id=f.id, job_type="reindex", status="queued"))
+    job = IngestionJob(file_id=f.id, job_type="reindex", status="queued")
+    db.add(job)
     audit(
         db, action="file.reindex", workspace_id=workspace_id,
         user_id=current.id, target=f.filename,
@@ -327,4 +334,7 @@ def reindex_file(
         {"action": "file.reindex", "workspace_id": workspace_id,
          "user_id": current.id, "target": f.filename}
     )
+
+    db.commit()
+    enqueue_ingest(f.id, job.id)
     return FileStatusOut(id=f.id, status=f.status)

@@ -6,10 +6,9 @@
 
 from typing import Any
 
+from ai_asistent_core.db import get_engine, get_redis
 from fastapi import APIRouter, Response
 from sqlalchemy import text
-
-from app.db import get_engine, get_redis
 
 router = APIRouter(prefix="/health", tags=["health"])
 

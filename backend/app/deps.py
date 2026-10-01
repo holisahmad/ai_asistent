@@ -4,12 +4,12 @@ import json
 from collections.abc import Callable
 from typing import Annotated
 
+from ai_asistent_core.db import get_db
+from ai_asistent_core.models import AuditEvent, AuthSession, Membership, User, utcnow
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
-from app.models import AuditEvent, AuthSession, Membership, User, utcnow
 from app.security import hash_token
 
 ROLE_ADMIN = "admin"

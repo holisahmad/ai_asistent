@@ -1,14 +1,17 @@
 [project]
-name = "ai-asistent-worker"
+name = "ai-asistent-core"
 version = "0.1.0"
-description = "AI Knowledge Assistant — Background Worker (RQ) dengan pipeline ingestion"
+description = "Shared domain: config, models, storage, parsers, chunking, embeddings, vector store"
 requires-python = ">=3.12"
 dependencies = [
-    "rq>=2.1",
-    "redis>=5.2",
     "pydantic-settings>=2.7",
-    "psycopg[binary]>=3.2",
-    "ai-asistent-core",
+    "sqlalchemy>=2.0",
+    "redis>=5.2",
+    "minio>=7.2",
+    "pypdf>=5.1",
+    "python-docx>=1.1",
+    "python-pptx>=1.0",
+    "openpyxl>=3.1",
 ]
 
 [dependency-groups]
@@ -23,15 +26,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/worker"]
-
-[tool.uv.sources]
-ai-asistent-core = { workspace = true }
+packages = ["src/ai_asistent_core"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -40,7 +39,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
-mypy_path = "src"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

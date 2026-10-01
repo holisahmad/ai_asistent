@@ -1,19 +1,18 @@
-"""Storage adapter — S3-compatible (MinIO) di balik interface.
+"""Storage adapter — S3-compatible (MinIO) di balik interface."""
 
-Interface `StorageProtocol` membuat vendor bisa diganti (roadmap:
-adapter agar provider dapat diganti) tanpa menyentuh kode pemanggil.
-"""
-
+import io
+from datetime import timedelta
 from typing import Protocol
 
 from minio import Minio
 
-from app.settings import get_settings
+from ai_asistent_core.config import get_settings
 
 
 class StorageProtocol(Protocol):
     """Kontrak minimal storage object."""
 
+    def get(self, key: str) -> bytes: ...
     def put(self, key: str, data: bytes, content_type: str) -> None: ...
     def presign_get(self, key: str, expires_seconds: int) -> str: ...
     def remove(self, key: str) -> None: ...
@@ -42,9 +41,17 @@ class MinioStorage:
         if not self._client.bucket_exists(self._bucket):
             self._client.make_bucket(self._bucket)
 
-    def put(self, key: str, data: bytes, content_type: str) -> None:
-        import io
+    def get(self, key: str) -> bytes:
+        """Baca isi object."""
+        resp = self._client.get_object(self._bucket, key)
+        try:
+            return resp.read()
+        finally:
+            resp.close()
+            resp.release_conn()
 
+    def put(self, key: str, data: bytes, content_type: str) -> None:
+        """Simpan object."""
         self._client.put_object(
             self._bucket,
             key,
@@ -54,14 +61,17 @@ class MinioStorage:
         )
 
     def presign_get(self, key: str, expires_seconds: int) -> str:
-        from datetime import timedelta
-
+        """URL GET presigned."""
         return self._client.presigned_get_object(
             self._bucket, key, expires=timedelta(seconds=expires_seconds)
         )
 
     def remove(self, key: str) -> None:
+        """Hapus object."""
         self._client.remove_object(self._bucket, key)
+
+
+_storage: MinioStorage | None = None
 
 
 def get_storage() -> MinioStorage:
@@ -70,6 +80,3 @@ def get_storage() -> MinioStorage:
     if _storage is None:
         _storage = MinioStorage()
     return _storage
-
-
-_storage: MinioStorage | None = None

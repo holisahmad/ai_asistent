@@ -1,10 +1,9 @@
 """Test audit trail: event tertulis ke tabel audit_events."""
 
+from ai_asistent_core.config import get_settings
+from ai_asistent_core.models import AuditEvent
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
-
-from app.models import AuditEvent
-from app.settings import get_settings
 
 
 def test_audit_events_written_for_auth_and_workspace(client) -> None:  # noqa: ANN001

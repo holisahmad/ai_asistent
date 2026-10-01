@@ -10,8 +10,8 @@ from sqlalchemy import create_engine, pool
 # Pastikan package `app` dapat diimport saat alembic dijalankan dari backend/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.models import Base  # noqa: E402
-from app.settings import get_settings  # noqa: E402
+from ai_asistent_core.config import get_settings  # noqa: E402
+from ai_asistent_core.models import Base  # noqa: E402
 
 config = context.config
 

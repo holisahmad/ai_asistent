@@ -2,18 +2,20 @@
 
 Asisten AI knowledge base perusahaan: grounded-first, source-aware, multi-tenant, dan siap produksi. Panduan lengkap ada di [roadmap.md](roadmap.md).
 
-## Status: Fase 1–3 selesai ✅
+## Status: Fase 1–5 selesai ✅
 
 - **Fase 1 — Foundation**: struktur project, infra Docker, health checks, CI, tooling kualitas.
 - **Fase 2 — Auth & Workspace**: registrasi/login/logout, session token, multi-tenant workspace, RBAC (admin/editor/contributor/viewer), audit trail, migrasi Alembic.
 - **Fase 3 — File Upload & Storage**: upload PDF/DOCX/PPTX/XLSX/TXT/MD/CSV/HTML/JSON, validasi ukuran & ekstensi, checksum sha256 dedup, MinIO + signed URL, status queued/processing/indexed/failed, cancel/delete/reindex.
+- **Fase 4 — Ingestion & Parsing**: parser per format (PDF halaman, DOCX heading/tabel, PPTX slide, XLSX sheet, TXT/MD char, CSV blok baris) di worker RQ; locator page/slide/sheet/row/char sebagai dasar sitasi; job idempotent via Redis.
+- **Fase 5 — Chunking & Indexing**: chunk token-aware (512 tok, overlap 64) yang mempertahankan locator, embedding adapter (local hash / OpenAI), vector store **pgvector** (cosine, IVFFlat), pipeline worker end-to-end → status `indexed`.
 
 | Komponen | Teknologi | Port dev |
 | --- | --- | --- |
 | Frontend | Next.js 15 + React 19 + Tailwind v4 | 3000 |
 | Backend API | FastAPI + SQLAlchemy + Pydantic v2 | 8000 |
-| Worker | Redis + RQ (queue `default`) | — |
-| Database | PostgreSQL 16 (+pgvector menyusul) | **5433** (host) |
+| Worker | Redis + RQ (queue `default`) + pipeline parser/chunk/embed | — |
+| Database | PostgreSQL 16 + pgvector (image `pgvector/pgvector:pg16`) | **5433** (host) |
 | Queue/Cache | Redis 7 | **6380** (host) |
 | Object storage | MinIO (S3-compatible) | 9000 / konsol 9001 |
 
@@ -50,27 +52,39 @@ CI (GitHub Actions) menjalankan hal yang sama di setiap push/PR — lihat [.gith
 
 ```
 ai_asistent/
-├── backend/          # FastAPI: app/, migrations/, tests/, pyproject.toml
+├── core/             # Package bersama (uv workspace): ai_asistent_core
+│   └── src/ai_asistent_core/
+│       ├── config.py     # settings inti (env APP_*, satu sumber)
+│       ├── models.py     # semua model SQLAlchemy + pgvector Vector
+│       ├── db.py         # engine/session/redis (lazy) + koneksi RQ biner
+│       ├── storage.py    # adapter MinIO (StorageProtocol)
+│       ├── parsers.py    # PDF/DOCX/PPTX/XLSX/TXT/MD/CSV → Section+locator
+│       ├── chunking.py   # chunk token-aware + overlap
+│       ├── embeddings.py # adapter local hash / OpenAI
+│       └── vecstore.py   # adapter pgvector (VectorStoreProtocol)
+├── backend/          # FastAPI: app/, migrations/, tests/
 │   ├── app/
-│   │   ├── api/routes/   # health.py, auth.py, workspaces.py — files/chat menyusul
-│   │   ├── db.py             # engine/session/Redis (lazy)
-│   │   ├── models.py         # User, Workspace, Membership, AuthSession, AuditEvent
+│   │   ├── api/routes/   # health, auth, workspaces, files
 │   │   ├── deps.py           # current user, RBAC require_role, audit
+│   │   ├── queue.py          # enqueue RQ (graceful bila Redis down)
 │   │   ├── security.py       # bcrypt + token opaque
 │   │   ├── audit.py          # JSONL audit sink
 │   │   ├── schemas.py        # Pydantic request/response
-│   │   ├── logging.py        # structured JSON logs
-│   │   ├── settings.py       # pydantic-settings (.env root, prefix APP_)
 │   │   └── main.py           # app factory
-│   └── migrations/       # Alembic (0001_initial)
-├── worker/           # RQ worker: worker/jobs.py registry + tests/
+│   └── migrations/       # Alembic 0001-0003 (pgvector, documents, chunks)
+├── worker/           # RQ worker (src layout)
+│   └── src/worker/
+│       ├── pipeline.py   # ingest_file: get→parse→chunk→embed→index (idempotent)
+│       ├── jobs.py       # registry job (whitelist)
+│       └── main.py       # entrypoint `make worker`
 ├── frontend/         # Next.js App Router: app/, lib/
 ├── docs/             # catatan arsitektur & keputusan
-├── infra/            # (disediakan untuk Dockerfile & konfigurasi deploy)
-├── docker-compose.yml    # Postgres + Redis + MinIO + healthchecks
+├── docker-compose.yml    # pgvector + Redis + MinIO + healthchecks
 ├── .env.example          # template config, tanpa secret
 └── roadmap.md            # panduan eksekusi 10 fase
 ```
+
+Backend & worker berbagi package `core` via **uv workspace** — model dan pipeline tidak diduplikasi, worker tetap bisa di-deploy terpisah.
 
 ## API — Fase 2 (auth & workspace)
 
@@ -107,4 +121,4 @@ Salin `.env.example` → `.env`. Prefix variabel aplikasi: `APP_` (mis. `APP_DAT
 
 ## Langkah berikutnya
 
-Fase 3 (upload + object storage) → Fase 4 (parsing) → dst. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur end-to-end dan keputusan tiap fase.
+Fase 6 (Retrieval & RAG: hybrid search, reranking, chat grounded dengan sitasi) → dst. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur end-to-end dan keputusan tiap fase.

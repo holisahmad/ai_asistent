@@ -1,17 +1,27 @@
-"""Unit tests untuk registry job (tanpa infra)."""
+"""Test worker: registry job & util pipeline (tanpa infra eksternal)."""
 
-from worker.jobs import JOBS, ping
+import pytest
 
-
-def test_ping_returns_ok() -> None:
-    result = ping("job-123")
-    assert result == {"ok": True, "job_id": "job-123"}
+from worker.jobs import get_callable
 
 
-def test_ping_is_idempotent_shape() -> None:
-    # Bentuk output stabil — syarat job idempotent di roadmap.
-    assert ping() == {"ok": True, "job_id": None}
+def test_registry_contains_ingest() -> None:
+    fn = get_callable("worker.jobs.ingest")
+    assert callable(fn)
 
 
-def test_registry_contains_ping() -> None:
-    assert "worker.jobs.ping" in JOBS
+def test_registry_rejects_unknown() -> None:
+    with pytest.raises(KeyError):
+        get_callable("os.system")
+
+
+def test_chunk_to_embed_shapes() -> None:
+    """Sanity: chunk dari section kecil → minimal 1 chunk."""
+    from ai_asistent_core.chunking import chunk_sections
+    from ai_asistent_core.parsers import Section
+
+    chunks = chunk_sections(
+        [Section(text="halo", locator_type="page", locator_start=1, locator_end=1)]
+    )
+    assert len(chunks) == 1
+    assert chunks[0].content == "halo"

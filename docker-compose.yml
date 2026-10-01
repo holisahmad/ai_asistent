@@ -4,7 +4,8 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # Image Postgres + ekstensi pgvector (Fase 5): volume lama tetap kompatibel.
+    image: pgvector/pgvector:pg16
     container_name: aiassistant-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ai_assistant}
