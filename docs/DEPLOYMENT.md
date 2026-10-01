@@ -124,6 +124,23 @@ insiden kritis → postmortem maksimal 3 hari kerja.
 Praktik: batasi `APP_RETRIEVAL_TOP_K`/`CANDIDATES` untuk menahan biaya token;
 pantau histogram latensi & biaya token dari `scripts/bench.py` dan laporan eval.
 
+## 8b. Pemeliharaan Embedding
+
+Skor dense retrieval hanya konsisten bila vektor chunk dan vektor query dihitung
+oleh kode/provider yang sama. Saat `APP_EMBEDDING_PROVIDER` atau dimensi berubah,
+jalankan:
+
+```bash
+make reembed ARGS=--check   # non-destruktif: laporkan cosine lama-vs-baru (exit 1 bila ada stale)
+make reembed                # hitung ulang embedding semua chunk dari content
+make reembed ARGS='--workspace <WS_ID> --batch 64'
+```
+
+Skrip membaca langsung `document_chunks.content` (tidak mem-parse ulang file),
+sehingga aman dijalankan tanpa object storage. Jadwalkan `--check` pada proses
+operasi berkala; bila melaporkan stale > 0, jalankan `make reembed` sebelum menilai
+kualitas retrieval.
+
 ## 9. Evaluasi Berkala (Pilot)
 
 ```bash

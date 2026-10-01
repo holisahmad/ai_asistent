@@ -1,4 +1,4 @@
-.PHONY: help infra infra-down install api worker web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench
+.PHONY: help infra infra-down install api worker web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench reembed
 
 help:
 	@echo "AI Knowledge Assistant — perintah utama:"
@@ -22,6 +22,7 @@ help:
 	@echo "  make scan-deps     Audit dependensi Python (pip-audit) & Node (npm audit)"
 	@echo "  make eval          Evaluasi kualitas RAG (ARGS='--write' untuk laporan)"
 	@echo "  make bench         Benchmark p50/p95/p99 (ARGS='--iterations 50')"
+	@echo "  make reembed       Hitung ulang embedding chunk (ARGS='--check' untuk cek)"
 
 infra:
 	docker compose up -d --wait
@@ -95,6 +96,9 @@ eval:
 
 bench:
 	uv run --project backend python scripts/bench.py $(ARGS)
+
+reembed:
+	uv run --project backend python scripts/reembed.py $(ARGS)
 
 clean:
 	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true

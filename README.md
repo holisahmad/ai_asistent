@@ -55,7 +55,10 @@ make backup        # backup Postgres + MinIO ke ./backups/<timestamp>
 make restore-drill # backup → restore ke DB scratch → bandingkan → PASS/FAIL
 make eval ARGS=--write  # evaluasi kualitas RAG → docs/reports/eval-<stamp>.md
 make bench ARGS='--iterations 50'  # benchmark p50/p95/p99 retrieval & chat
+make reembed ARGS=--check  # deteksi embedding chunk yang stale vs kode terbaru
 ```
+
+> **Penting:** bila algoritma/provider embedding berubah (`APP_EMBEDDING_PROVIDER`/dim), vektor chunk lama menjadi tidak konsisten. Jalankan `make reembed ARGS=--check` untuk memeriksa, lalu `make reembed` untuk menghitung ulang. Alternatif per-file: `POST /files/{id}/reindex`.
 
 CI (GitHub Actions) menjalankan hal yang sama di setiap push/PR — lihat [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
@@ -99,7 +102,7 @@ ai_asistent/
 │       ├── jobs.py       # registry job → core.pipeline.ingest_file (idempotent)
 │       └── main.py       # entrypoint `make worker`
 ├── frontend/         # Next.js App Router: app/ (landing, /login, /app, /status), lib/api.ts (SSE)
-├── scripts/          # Fase 9/10: backup/restore/drill, scan_secrets, scan_deps, eval_rag, bench
+├── scripts/          # Fase 9/10: backup/restore/drill, scan_secrets, scan_deps, eval_rag, bench, reembed
 ├── docs/             # catatan arsitektur & keputusan
 │   ├── ARCHITECTURE.md       # alur end-to-end + keputusan tiap fase
 │   ├── DEPLOYMENT.md         # Fase 10: deployment, operasi, incident, rollback, scaling
