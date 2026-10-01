@@ -10,6 +10,9 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from ai_asistent_core.chunking import chunk_sections
 from ai_asistent_core.config import get_settings
 from ai_asistent_core.embeddings import embed_batch
@@ -23,8 +26,6 @@ from ai_asistent_core.models import (
 from ai_asistent_core.parsers import parse_file
 from ai_asistent_core.storage import get_storage
 from ai_asistent_core.vecstore import get_vector_store
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger("ai_asistent_core.pipeline")
 
