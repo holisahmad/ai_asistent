@@ -306,13 +306,33 @@ class Citation(TimestampMixin, Base):
         String(36), ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False
     )
     idx: Mapped[int] = mapped_column(Integer, nullable=False)  # urutan tampil [1], [2], ...
-    chunk_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    file_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    # Fase 7: sitasi internal nullable (source_type=web tidak punya chunk/file)
+    chunk_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    file_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     locator_type: Mapped[str] = mapped_column(String(20), nullable=False)
     locator_start: Mapped[int] = mapped_column(Integer, nullable=False)
     locator_end: Mapped[int] = mapped_column(Integer, nullable=False)
     snippet: Mapped[str] = mapped_column(Text, nullable=False)
     score: Mapped[float] = mapped_column(default=0.0, nullable=False)
+    # source_type: internal | web (web = hasil fallback Fase 7, selalu ditandai)
+    source_type: Mapped[str] = mapped_column(String(20), default="internal", nullable=False)
+    url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     message: Mapped[Message] = relationship(back_populates="citations")
+
+
+class WebSearchLog(Base):
+    """Jejak pencarian web fallback (Fase 7): provenance & audit biaya."""
+
+    __tablename__ = "web_search_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    workspace_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(String(30), default="none", nullable=False)
+    results_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    log_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True, nullable=False
+    )

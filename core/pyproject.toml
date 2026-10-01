@@ -1,7 +1,7 @@
 [project]
 name = "ai-asistent-core"
 version = "0.1.0"
-description = "Shared domain: config, models, storage, parsers, chunking, embeddings, vector store"
+description = "Shared domain: config, models, storage, parsers, chunking, embeddings, retrieval, LLM/RAG, web search"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic-settings>=2.7",
@@ -12,6 +12,7 @@ dependencies = [
     "python-docx>=1.1",
     "python-pptx>=1.0",
     "openpyxl>=3.1",
+    "httpx>=0.28",
 ]
 
 [dependency-groups]

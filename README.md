@@ -2,14 +2,16 @@
 
 Asisten AI knowledge base perusahaan: grounded-first, source-aware, multi-tenant, dan siap produksi. Panduan lengkap ada di [roadmap.md](roadmap.md).
 
-## Status: Fase 1–6 selesai ✅
+## Status: Fase 1–8 selesai ✅
 
 - **Fase 1 — Foundation**: struktur project, infra Docker, health checks, CI, tooling kualitas.
 - **Fase 2 — Auth & Workspace**: registrasi/login/logout, session token, multi-tenant workspace, RBAC (admin/editor/contributor/viewer), audit trail, migrasi Alembic.
 - **Fase 3 — File Upload & Storage**: upload PDF/DOCX/PPTX/XLSX/TXT/MD/CSV/HTML/JSON, validasi ukuran & ekstensi, checksum sha256 dedup, MinIO + signed URL, status queued/processing/indexed/failed, cancel/delete/reindex.
 - **Fase 4 — Ingestion & Parsing**: parser per format (PDF halaman, DOCX heading/tabel, PPTX slide, XLSX sheet, TXT/MD char, CSV blok baris) di worker RQ; locator page/slide/sheet/row/char sebagai dasar sitasi; job idempotent via Redis.
 - **Fase 5 — Chunking & Indexing**: chunk token-aware (512 tok, overlap 64) yang mempertahankan locator, embedding adapter (local hash / OpenAI), vector store **pgvector** (cosine, IVFFlat), pipeline worker end-to-end → status `indexed`.
-- **Fase 6 — Retrieval & RAG**: hybrid retrieval (dense pgvector + keyword FTS Postgres) dengan fusi skor deterministik (RRF + cosine) dan threshold; ACL workspace difilter di SQL sebelum konteks ke LLM; LLM adapter (local stub / OpenAI) dengan prompt grounded; jawaban streaming SSE dengan citation objects klikabel; no-answer "informasi belum tersedia"; chats/messages/citations tersimpan.
+- **Fase 6 — Retrieval & RAG**: hybrid retrieval (dense pgvector + keyword FTS Postgres) dengan fusi skor deterministik (RRF + cosine) dan threshold; ACL workspace difilter di SQL sebelum konteks ke LLM; LLM adapter (local stub / OpenAI / **openai_compat**) dengan prompt grounded; jawaban streaming SSE token-level dengan citation objects klikabel; no-answer "informasi belum tersedia"; chats/messages/citations tersimpan.
+- **Fase 7 — Web Fallback**: mode `internal_only` / `internal_plus_web` (default aman), web search hanya bila bukti internal tak cukup **dan** klien mengirim `allow_web=true`; provider adapter (DuckDuckGo tanpa key / SearXNG / Tavily); allowlist & denylist domain (deny menang), rate limit, timeout, sanitasi konten; sitasi web selalu `source_type=web` + URL (tidak pernah dicampur dengan sitasi internal); setiap percobaan tercatat di `web_search_logs`.
+- **Fase 8 — UI/UX**: login/register, dashboard workspace multi-tenant, chat streaming SSE dengan badge grounded/no-answer/web, **drawer sumber** (snippet, locator, unduh file, buka sumber web), upload drag-and-drop dengan progress & error recovery, pustaka dokumen (status, reindex, hapus, unduh), RBAC pada tombol aksi, empty/loading/error state, CORS untuk frontend.
 
 | Komponen | Teknologi | Port dev |
 | --- | --- | --- |
@@ -34,7 +36,7 @@ make worker                   # terminal 2: RQ worker
 make web                      # terminal 3: frontend di http://localhost:3000
 ```
 
-Cek cepat: buka http://localhost:3000 (landing) dan http://localhost:3000/status (panel status yang memanggil `/health/live` & `/health/ready`).
+Cek cepat: buka http://localhost:3000 (landing) → **Masuk/Daftar** di http://localhost:3000/login → dashboard di http://localhost:3000/app (chat + dokumen). Panel status: http://localhost:3000/status.
 
 ## Quality gates
 
@@ -64,9 +66,10 @@ ai_asistent/
 │       ├── embeddings.py # adapter local (bag-of-words hash) / OpenAI
 │       ├── vecstore.py   # adapter pgvector (VectorStoreProtocol)
 │       ├── retrieval.py  # hybrid: dense + keyword FTS + fusi RRF (ACL di SQL)
-│       ├── llm.py        # adapter LLM: local stub / OpenAI (prompt grounded)
-│       ├── rag.py        # orkestrasi: retrieve → LLM → jawaban + sitasi
-│       └── models.py     # + chats, messages, citations (Fase 6)
+│       ├── llm.py        # adapter LLM: local stub / OpenAI SDK / openai_compat
+│       ├── rag.py        # orkestrasi: retrieve → LLM → sitasi/no-answer/web fallback
+│       ├── websearch.py  # Fase 7: DDG/SearXNG/Tavily + ACL domain + rate limit
+│       └── models.py     # chats, messages, citations, web_search_logs
 ├── backend/          # FastAPI: app/, migrations/, tests/
 │   ├── app/
 │   │   ├── api/routes/   # health, auth, workspaces, files, chat
@@ -76,12 +79,12 @@ ai_asistent/
 │   │   ├── audit.py          # JSONL audit sink
 │   │   ├── schemas.py        # Pydantic request/response
 │   │   └── main.py           # app factory
-│   └── migrations/       # Alembic 0001-0004 (pgvector, chats/messages/citations)
+│   └── migrations/       # Alembic 0001-0005 (pgvector, chats, sitasi web)
 ├── worker/           # RQ worker (src layout)
 │   └── src/worker/
 │       ├── jobs.py       # registry job → core.pipeline.ingest_file (idempotent)
 │       └── main.py       # entrypoint `make worker`
-├── frontend/         # Next.js App Router: app/, lib/
+├── frontend/         # Next.js App Router: app/ (landing, /login, /app, /status), lib/api.ts (SSE)
 ├── docs/             # catatan arsitektur & keputusan
 ├── docker-compose.yml    # pgvector + Redis + MinIO + healthchecks
 ├── .env.example          # template config, tanpa secret
@@ -111,7 +114,7 @@ Backend & worker berbagi package `core` via **uv workspace** — model dan pipel
 | POST | `/api/v1/workspaces/{id}/files/{file_id}/cancel` | contributor+ (queued saja) |
 | DELETE | `/api/v1/workspaces/{id}/files/{file_id}` | editor+ (soft delete) |
 | POST | `/api/v1/workspaces/{id}/files/{file_id}/reindex` | contributor+ |
-| POST | `/api/v1/workspaces/{id}/chat/stream` | viewer+ (SSE: meta/delta/done, citations di `done`) |
+| POST | `/api/v1/workspaces/{id}/chat/stream` | viewer+ (SSE: meta/delta/done; `allow_web` untuk fallback web) |
 | GET | `/api/v1/workspaces/{id}/chats` | viewer+ (daftar chat) |
 | GET | `/api/v1/workspaces/{id}/chats/{chat_id}` | viewer+ (pesan + sitasi) |
 
@@ -128,4 +131,4 @@ Salin `.env.example` → `.env`. Prefix variabel aplikasi: `APP_` (mis. `APP_DAT
 
 ## Langkah berikutnya
 
-Fase 7 (Web fallback: mode internal-only/internal-plus-web, allowlist domain, sanitasi) → dst. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur end-to-end dan keputusan tiap fase.
+Fase 9 (Production hardening: rate limit API, retry/backoff, metrics/tracing, backup & restore drill, secret/dependency scan, benchmark p50/p95) → dst. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur end-to-end dan keputusan tiap fase.

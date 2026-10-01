@@ -3,8 +3,9 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from ai_asistent_core.config import get_settings
+from ai_asistent_core.config import csv_list, get_settings
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.routes import auth, chat, files, health, workspaces
@@ -26,6 +27,13 @@ def create_app() -> FastAPI:
         title="AI Knowledge Assistant API",
         version=__version__,
         lifespan=lifespan,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=csv_list(get_settings().cors_origins_csv),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
     )
     app.include_router(health.router)
     app.include_router(auth.router, prefix="/api/v1")

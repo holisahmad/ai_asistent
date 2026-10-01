@@ -7,8 +7,8 @@ const ROADMAP_PHASES = [
   { id: 4, name: "Ingestion & Parsing", done: true },
   { id: 5, name: "Chunking & Indexing", done: true },
   { id: 6, name: "Retrieval & RAG", done: true },
-  { id: 7, name: "Web Fallback", done: false },
-  { id: 8, name: "UI/UX", done: false },
+  { id: 7, name: "Web Fallback", done: true },
+  { id: 8, name: "UI/UX", done: true },
   { id: 9, name: "Production Hardening", done: false },
   { id: 10, name: "Pilot & Scale", done: false },
 ];
@@ -24,16 +24,29 @@ export default function Home() {
         <span className="text-sky-400"> lengkap dengan sitasi.</span>
       </h1>
       <p className="mt-6 max-w-2xl text-lg text-slate-300">
-        Grounded-first: jawaban hanya dari dokumen internal. Jika bukti tidak
-        tersedia, sistem akan menyatakannya secara eksplisit — bukan mengarang.
+        Grounded-first: jawaban hanya dari dokumen internal, lengkap dengan
+        sitasi yang bisa diklik. Jika bukti tidak tersedia, sistem akan
+        menyatakannya secara eksplisit — bukan mengarang.
       </p>
 
-      <div className="mt-8 flex gap-4">
+      <div className="mt-8 flex flex-wrap gap-4">
         <Link
-          href="/status"
+          href="/app"
           className="rounded-lg bg-sky-500 px-5 py-2.5 font-medium text-white transition hover:bg-sky-400"
         >
-          Lihat Status Sistem
+          Buka Dashboard
+        </Link>
+        <Link
+          href="/login"
+          className="rounded-lg border border-slate-700 px-5 py-2.5 font-medium text-slate-300 transition hover:bg-slate-800"
+        >
+          Masuk / Daftar
+        </Link>
+        <Link
+          href="/status"
+          className="rounded-lg border border-slate-700 px-5 py-2.5 font-medium text-slate-300 transition hover:bg-slate-800"
+        >
+          Status Sistem
         </Link>
       </div>
 

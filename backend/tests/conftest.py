@@ -16,6 +16,7 @@ from app.main import create_app
 
 _TABLES = (
     "audit_events",
+    "web_search_logs",
     "auth_sessions",
     "memberships",
     "workspaces",

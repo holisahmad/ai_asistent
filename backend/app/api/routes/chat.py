@@ -1,8 +1,10 @@
-"""Chat endpoints — Fase 6: RAG grounded streaming + riwayat chat.
+"""Chat endpoints — Fase 6/7: RAG grounded streaming + riwayat chat.
 
 - POST /chat/stream: SSE. Retrieve hybrid (ACL workspace) → LLM grounded →
-  jawaban + citations. Peristiwa: `meta`, `delta`, `done`. No-answer →
-  "Informasi belum tersedia…" + answer_kind=no_answer.
+  jawaban + citations. Peristiwa: `meta`, `delta`, `done`, `error`.
+  `allow_web=true` mengaktifkan web fallback (Fase 7) HANYA bila mode
+  workspace `internal_plus_web` dan bukti internal tak mencukupi; sitasi
+  web selalu `source_type="web"` dengan URL.
 - GET /chats, GET /chats/{chat_id}: riwayat (viewer+).
 
 RBAC: viewer+ (chat = baca knowledge base). Non-anggota workspace → 404.
@@ -10,6 +12,7 @@ RBAC: viewer+ (chat = baca knowledge base). Non-anggota workspace → 404.
 
 import json
 from collections.abc import Iterator
+from typing import Any
 
 from ai_asistent_core.models import Chat, Citation, Message, utcnow
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,7 +32,22 @@ from app.schemas import (
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["chat"])
 
-NO_ANSWER_MESSAGE = "Informasi belum tersedia dalam knowledge base."
+
+def _citation_payload(c: Any) -> dict[str, object]:
+    """Serialisasi sitasi untuk event SSE `done`."""
+    return {
+        "idx": c.idx,
+        "chunk_id": c.chunk_id,
+        "file_id": c.file_id,
+        "filename": c.filename,
+        "locator_type": c.locator_type,
+        "locator_start": c.locator_start,
+        "locator_end": c.locator_end,
+        "snippet": c.snippet,
+        "score": c.score,
+        "source_type": c.source_type,
+        "url": c.url,
+    }
 
 
 def _get_chat_or_404(db: Session, workspace_id: str, chat_id: str) -> Chat:
@@ -61,6 +79,8 @@ def _message_out(db: Session, m: Message) -> MessageOut:
                 locator_end=c.locator_end,
                 snippet=c.snippet,
                 score=c.score,
+                source_type=c.source_type,
+                url=c.url,
             )
             for c in cits
         ],
@@ -99,7 +119,7 @@ def chat_stream(
         workspace_id=workspace_id,
         user_id=current.id,
         target=chat.id,
-        meta={"question_chars": len(payload.question)},
+        meta={"question_chars": len(payload.question), "allow_web": payload.allow_web},
     )
     audit_mod.write_audit_log(
         {
@@ -116,11 +136,16 @@ def chat_stream(
         return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
     def generate() -> Iterator[str]:
-        from ai_asistent_core.rag import answer_question
+        from ai_asistent_core.rag import answer_stream
 
         yield _event("meta", {"chat_id": chat_id})
         try:
-            answer = answer_question(db, workspace_id, payload.question)
+            stream = answer_stream(
+                db, workspace_id, payload.question, allow_web=payload.allow_web
+            )
+            for delta in stream:
+                yield _event("delta", {"text": delta})
+            answer = stream.final()
         except Exception as exc:  # noqa: BLE001 - error tetap jadi event SSE
             db.rollback()
             yield _event("error", {"message": f"RAG failed: {type(exc).__name__}"})
@@ -148,34 +173,33 @@ def chat_stream(
                     locator_end=cit.locator_end,
                     snippet=cit.snippet,
                     score=cit.score,
+                    source_type=cit.source_type,
+                    url=cit.url,
                 )
             )
         chat.updated_at = utcnow()
+        audit(
+            db,
+            action="chat.answer",
+            workspace_id=workspace_id,
+            user_id=current.id,
+            target=assistant.id,
+            meta={
+                "answer_kind": answer.answer_kind,
+                "citations": len(answer.citations),
+            },
+        )
         db.commit()
 
-        # Streaming kata-per-kata (simulasi token stream; adapter local
-        # deterministik — OpenAI bisa dipasang token-asli di sini nanti).
-        for word in answer.text.split(" "):
-            yield _event("delta", {"text": word + " "})
+        # `text` pada event done adalah teks final otoritatif — klien boleh
+        # memakainya untuk mengganti hasil streaming (mis. jalur no-answer).
         yield _event(
             "done",
             {
                 "message_id": assistant.id,
                 "answer_kind": answer.answer_kind,
-                "citations": [
-                    {
-                        "idx": c.idx,
-                        "chunk_id": c.chunk_id,
-                        "file_id": c.file_id,
-                        "filename": c.filename,
-                        "locator_type": c.locator_type,
-                        "locator_start": c.locator_start,
-                        "locator_end": c.locator_end,
-                        "snippet": c.snippet,
-                        "score": c.score,
-                    }
-                    for c in answer.citations
-                ],
+                "text": answer.text,
+                "citations": [_citation_payload(c) for c in answer.citations],
             },
         )
 

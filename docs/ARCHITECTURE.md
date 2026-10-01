@@ -18,6 +18,32 @@ Pertanyaan → hybrid retrieval (dense + keyword) + ACL filter → reranking
            → web fallback opsional (mode dikontrol, sumber ditandai eksternal)
 ```
 
+## Keputusan Fase 7 (Web Fallback)
+
+| Keputusan | Alasan |
+| --- | --- |
+| Dua faktor izin: mode workspace (`internal_plus_web`) DAN `allow_web` per request | Roadmap: web hanya bila diizinkan; pengguna/workspace memegang kendali, default `internal_only` (aman). |
+| Web dipanggil hanya saat bukti internal tidak mencukupi (retrieval kosong atau LLM menjawab `NO_ANSWER`) | Internal-first: data perusahaan tetap prioritas; web tidak pernah menimpa jawaban internal. |
+| Provider adapter: DuckDuckGo (tanpa key) / SearXNG (self-host) / Tavily (API key), `none` = mati | Vendor dapat diganti tanpa mengubah orkestrasi; dev bisa jalan tanpa biaya/API key. |
+| ACL domain allowlist+denylist dengan **deny menang**, dicocokkan pada hostname penuh | `deny: bad.example.com` tetap memblokir subdomain walau `allow: example.com` ada; hasil yang ditolak tetap dicatat di log. |
+| Rate limit sliding-window per proses + timeout 8s + `max_results` | Roadmap: timeout & rate limit wajib; melindungi biaya dan mencegah loop pencarian. |
+| Sanitasi konten (strip tag/entity/zero-width, collapse whitespace, batas panjang) sebelum masuk prompt | Konten web tidak dipercaya (prompt injection/HTML); hanya teks bersih yang menjadi konteks LLM. |
+| Sitasi web: `source_type="web"`, `url`, `chunk_id`/`file_id` NULL, locator `url` | Roadmap: jangan campur data web dengan internal tanpa provenance — UI bisa membedakan warna/label dan tidak pernah salah mengunduh file. |
+| `web_search_logs` mencatat query, provider, jumlah hasil, hasil yang ditolak, error | Provenance & audit biaya; dasar evaluasi kualitas fallback di Fase 9/10. |
+| Kegagalan web search/LLM web di-degrade ke no-answer, bukan error 5xx | Chat tetap responsif; kegagalan eksternal tidak menjatuhkan alur internal. |
+
+## Keputusan Fase 8 (UI/UX)
+
+| Keputusan | Alasan |
+| --- | --- |
+| Token opaque disimpan di `localStorage`, guard redirect ke `/login` | Konsisten dengan auth Fase 2 (tanpa JWT/cookie); cukup untuk MVP dan mudah diganti cookie httpOnly nanti. |
+| Chat streaming via `fetch` POST + pembacaan `ReadableStream` (bukan `EventSource`) | `EventSource` tidak bisa POST/Authorization; parser SSE kecil di `lib/api.ts` menangani event `meta`/`delta`/`done`/`error`. |
+| Teks final otoritatif ada di event `done` | Jalur no-answer/sentinel bisa mengganti teks yang sempat ter-stream (UI tidak menampilkan `NO_ANSWER`). |
+| Drawer sumber berisi filename, locator, snippet, skor; tombol unduh (internal) atau buka URL (web) | Roadmap: citation objects yang dapat diklik + sumber eksternal ditandai jelas. |
+| Peran diambil dari `GET /workspaces/{id}` lalu dibandingkan dengan urutan role | Tombol aksi (upload/reindex/hapus) mengikuti RBAC yang sama dengan API — UI tidak menawarkan aksi yang akan gagal 403. |
+| Polling status dokumen 4s hanya saat ada file `queued`/`processing` | Progress ingestion tanpa websocket; berhenti otomatis ketika semua selesai (hemat request). |
+| CORS dibatasi `APP_CORS_ORIGINS_CSV` (default `http://localhost:3000`), `allow_credentials=false` | Frontend di origin berbeda butuh preflight; tanpa cookie sehingga credentials tidak diperlukan. |
+
 ## Keputusan Fase 6 (Retrieval & RAG)
 
 | Keputusan | Alasan |
@@ -26,9 +52,9 @@ Pertanyaan → hybrid retrieval (dense + keyword) + ACL filter → reranking
 | ACL difilter `workspace_id` di level SQL pada semua jalur retrieval | Roadmap: ACL sebelum konteks ke LLM — bukti tenant lain mustahil masuk prompt, bukan sekadar difilter setelahnya. |
 | Fusi deterministik: RRF per sumber + skor cosine terbobot (0.6/0.4) + threshold | Tanpa model eksternal (MVP); RRF stabil terhadap skala skor; deterministik agar test & audit reproducible. |
 | Embedding local diganti bag-of-words hashing (dari whole-text hash) | Whole-text blake2b membuat cosine antar teks berbeda ~konstan → threshold tak bermakna; bag-of-words memberi skor shared-token sehingga ranking & threshold berfungsi di dev/test. Produksi tetap disarankan `openai`. |
-| LLM adapter `local` stub / `openai` + sentinel `NO_ANSWER` | Pola sama dengan embeddings: dev/test deterministik tanpa API; ganti provider cukup env. `NO_ANSWER` memisahkan "model bilang tak cukup bukti" dari error. |
+| LLM adapter `local` stub / `openai` / `openai_compat` + sentinel `NO_ANSWER` | Pola sama dengan embeddings: dev/test deterministik tanpa API; `openai_compat` (httpx, parsing toleran) menampung gateway/vLLM lokal apa pun, termasuk endpoint yang menempelkan `data: [DONE]` pada respons non-stream. `NO_ANSWER` memisahkan "model bilang tak cukup bukti" dari error. |
 | Prompt grounded: hanya dari konteks, sitasi [n], fakta/inferensi/ketidakpastian, no-answer wajib | Sesuai prinsip produk roadmap (grounded-first, source-aware). |
-| Streaming SSE (event meta/delta/done) | Kontrak API minimum `POST /chat/stream`; delta per kata simulasi token stream (adapter local deterministik), siap ditukar token asli OpenAI. |
+| Streaming SSE (event meta/delta/done) | Kontrak API minimum `POST /chat/stream`; delta diteruskan apa adanya dari `stream_generate` provider (token asli pada openai/openai_compat, kata pada stub lokal). Sentinel `NO_ANSWER` ditahan agar tidak terlihat klien. |
 | Sitasi disimpan sebagai baris `citations` (chunk_id, file_id, locator, snippet, score) | Citation objects klikabel & tahan waktu: riwayat chat tetap punya provenance walau chunk ter-reindex. |
 | No-answer: pesan "Informasi belum tersedia" + `answer_kind=no_answer` + tanpa sitasi | Roadmap wajib menyatakan ketiadaan bukti; `answer_kind` memudahkan evaluasi & Web fallback Fase 7 memicu hanya bila flag ini aktif. |
 | Migrasi 0004: chats/messages/citations FK CASCADE, chat.user_id SET NULL | Riwayat milik workspace (bukan per-user) sesuai model ACL workspace; audit `chat.ask` tetap mencatat user. |

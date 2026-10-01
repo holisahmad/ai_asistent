@@ -125,20 +125,26 @@ class ChatCreateIn(BaseModel):
     chat_id: str | None = Field(
         default=None, description="Lanjutkan chat yang ada (opsional)"
     )
+    allow_web: bool = Field(
+        default=False,
+        description="Izinkan web fallback bila bukti internal tak cukup (Fase 7)",
+    )
 
 
 class CitationOut(BaseModel):
     """Sitasi klikabel (file + locator + potongan pendukung)."""
 
     idx: int
-    chunk_id: str
-    file_id: str
-    filename: str
-    locator_type: str
-    locator_start: int
-    locator_end: int
-    snippet: str
-    score: float
+    chunk_id: str | None = None
+    file_id: str | None = None
+    filename: str = ""
+    locator_type: str = "char"
+    locator_start: int = 0
+    locator_end: int = 0
+    snippet: str = ""
+    score: float = 0.0
+    source_type: str = "internal"  # internal | web
+    url: str | None = None
 
 
 class MessageOut(BaseModel):

@@ -32,6 +32,9 @@ class CoreSettings(BaseSettings):
     max_upload_bytes: int = 100 * 1024 * 1024
     presign_expiry_seconds: int = 900
 
+    # CORS untuk frontend (CSV origin; dipakai backend)
+    cors_origins_csv: str = "http://localhost:3000"
+
     # File JSONL backup untuk audit trail (opsional; kosong = disable)
     audit_log_file: str | None = None
 
@@ -48,9 +51,24 @@ class CoreSettings(BaseSettings):
     retrieval_top_k: int = 6
     retrieval_candidates: int = 24
     retrieval_min_score: float = 0.05
-    llm_provider: str = "local"  # local | openai
+    llm_provider: str = "local"  # local | openai | openai_compat
     openai_chat_model: str = "gpt-4o-mini"
+    # Endpoint OpenAI-compatible (vLLM/Combo/gateway lokal); kosong = api.openai.com
+    openai_base_url: str | None = None
+    openai_timeout_seconds: float = 60.0
     rag_max_context_chars: int = 6000
+
+    # Fase 7: web fallback
+    web_fallback_mode: str = "internal_only"  # internal_only | internal_plus_web
+    web_search_provider: str = "none"  # none | duckduckgo | searx | tavily
+    web_search_base_url: str | None = None  # untuk searx (mis. http://searx:8080)
+    tavily_api_key: str | None = None
+    web_search_timeout_seconds: float = 8.0
+    web_search_max_results: int = 5
+    web_search_rate_limit_per_min: int = 10
+    # CSV domain (kosong = semua diizinkan); denylist menang atas allowlist
+    web_search_domain_allowlist_csv: str = ""
+    web_search_domain_denylist_csv: str = ""
 
     @property
     def database_url_sync(self) -> str:
@@ -62,3 +80,8 @@ class CoreSettings(BaseSettings):
 def get_settings() -> CoreSettings:
     """Return cached settings singleton."""
     return CoreSettings()  # pragma: no cover - trivial
+
+
+def csv_list(value: str) -> list[str]:
+    """Pecah CSV sederhana menjadi list bersih (untuk allowlist/denylist)."""
+    return [item.strip().lower() for item in value.split(",") if item.strip()]
