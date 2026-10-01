@@ -1,0 +1,69 @@
+# Infrastruktur development — Fase 1.
+# Catatan port: 5432/6379 di Mac ini sudah terpakai, jadi dipetakan ke 5433/6380.
+# Pin image secara eksplisit saat mendekati produksi.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aiassistant-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_assistant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_assistant}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_assistant}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_assistant} -d ${POSTGRES_DB:-ai_assistant}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: aiassistant-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  minio:
+    # Catatan: `minio/minio` diblokir di Docker Hub dari jaringan ini (pull denied),
+    # jadi dipakai image Bitnami legacy yang setara (env & port sama, console 9001 aktif).
+    image: bitnamilegacy/minio:latest
+    container_name: aiassistant-minio
+    # Image Bitnami default ke user 1001 tanpa chown awal (entrypoint asli di-bypass),
+    # sehingga /data tidak bisa ditulis. Jalankan sebagai root khusus development.
+    user: root
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${APP_MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${APP_MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

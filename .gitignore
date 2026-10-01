@@ -1,0 +1,44 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Secrets & environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+
+# Docker volumes / local data
+data/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Large binaries (jangan commit data perusahaan / binary besar)
+*.pdf
+*.docx
+*.pptx
+*.xlsx
+*.mp4
+*.mp3
+*.wav
+!tests/fixtures/**

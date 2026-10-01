@@ -1,0 +1,33 @@
+[project]
+name = "ai-assistant-worker"
+version = "0.1.0"
+description = "AI Knowledge Assistant — Background Worker (RQ)"
+requires-python = ">=3.12"
+dependencies = [
+    "rq>=2.1",
+    "redis>=5.2",
+    "pydantic-settings>=2.7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.9",
+    "mypy>=1.14",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
