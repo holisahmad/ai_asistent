@@ -1,24 +1,20 @@
-"""Shared dependency wiring (DB engine, Redis client).
-
-Dibuat lazy agar test tanpa infra tetap bisa meng-import app.
-SQLAlchemy/pgvector wiring penuh menyusul di Fase 2-5.
-"""
+"""Database engine, session factory, and Redis client (lazy singletons)."""
 
 from collections.abc import Generator
-from typing import Any
 
 from redis import Redis
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.settings import get_settings
 
-_engine: Any = None
+_engine = None
 _session_factory: sessionmaker[Session] | None = None
 _redis: Redis | None = None
 
 
-def get_engine() -> Any:
+def get_engine() -> Engine:
     """Lazily create the SQLAlchemy engine."""
     global _engine
     if _engine is None:
@@ -34,8 +30,16 @@ def get_session_factory() -> sessionmaker[Session]:
     return _session_factory
 
 
+def get_redis() -> Redis:
+    """Lazily create the Redis client (cache/queue checks)."""
+    global _redis
+    if _redis is None:
+        _redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
+    return _redis
+
+
 def get_db() -> Generator[Session, None, None]:
-    """FastAPI dependency yielding a DB session."""
+    """FastAPI dependency yielding a DB session with commit/rollback."""
     session = get_session_factory()()
     try:
         yield session
@@ -45,11 +49,3 @@ def get_db() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
-
-
-def get_redis() -> Redis:
-    """Lazily create the Redis client (used for cache/queue checks)."""
-    global _redis
-    if _redis is None:
-        _redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
-    return _redis

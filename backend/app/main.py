@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app import __version__
-from app.api.routes import health
+from app.api.routes import auth, health, workspaces
+from app.audit import configure_audit_logging
 from app.logging import configure_logging
 from app.settings import get_settings
 
@@ -15,6 +16,7 @@ from app.settings import get_settings
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
+    configure_audit_logging(settings.audit_log_file)
     yield
 
 
@@ -26,7 +28,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(health.router)
+    app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(workspaces.router, prefix="/api/v1")
     return app
-
-
-app = create_app()

@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     minio_bucket: str = "ai-assistant"
     minio_secure: bool = False
 
+    # File JSONL backup untuk audit trail (opsional; kosong = disable)
+    audit_log_file: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

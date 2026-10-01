@@ -18,6 +18,18 @@ Pertanyaan → hybrid retrieval (dense + keyword) + ACL filter → reranking
            → web fallback opsional (mode dikontrol, sumber ditandai eksternal)
 ```
 
+## Keputusan Fase 2 (Auth & Workspace)
+
+| Keputusan | Alasan |
+| --- | --- |
+| Session token opaque (random 32B) + SHA-256 hash di DB | Tidak perlu JWT/signing key di MVP; revocation mudah (kolom `revoked_at`); token mentah tidak pernah disimpan. |
+| bcrypt untuk password | Standar matang, salt otomatis; argon2 bisa menyusul via adapter bila diperlukan. |
+| RBAC 4 role dengan hirarki viewer<contributor<editor<admin | Sesuai roadmap; `require_role(min)` memeriksa level, bukan equality, sehingga editor boleh apa pun yang boleh dilakukan viewer. |
+| Bukan anggota → 404, bukan 403 | Anti enumeration: keberadaan workspace tenant lain tidak dibocorkan. Test isolasi mengunci perilaku ini. |
+| Audit double-write: tabel `audit_events` + file JSONL | DB untuk query aplikasi; JSONL untuk operasi (tail/grep) tanpa akses DB. Dikontrol `APP_AUDIT_LOG_FILE`. |
+| Monorepo tetap, backend bisa dipecah saat scale | Model & deps sudah modular (`db.py`, `deps.py`, `models.py`); pemisahan service jadi keputusan deployment, bukan refactor kode. |
+| `pytest-env` mengarahkan test ke DB `_test` | Isolasi penuh data dev vs test; CI menjalankan `alembic upgrade head` sebelum pytest. |
+
 ## Keputusan Fase 1
 
 | Keputusan | Alasan |

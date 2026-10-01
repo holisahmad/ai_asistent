@@ -2,9 +2,10 @@
 
 Asisten AI knowledge base perusahaan: grounded-first, source-aware, multi-tenant, dan siap produksi. Panduan lengkap ada di [roadmap.md](roadmap.md).
 
-## Status: Fase 1 — Foundation ✅
+## Status: Fase 1 & 2 selesai ✅
 
-Struktur project, infrastruktur Docker, health checks, CI, dan tooling kualitas sudah berjalan.
+- **Fase 1 — Foundation**: struktur project, infra Docker, health checks, CI, tooling kualitas.
+- **Fase 2 — Auth & Workspace**: registrasi/login/logout, session token, multi-tenant workspace, RBAC (admin/editor/contributor/viewer), audit trail, migrasi Alembic.
 
 | Komponen | Teknologi | Port dev |
 | --- | --- | --- |
@@ -34,6 +35,8 @@ Cek cepat: buka http://localhost:3000 (landing) dan http://localhost:3000/status
 ## Quality gates
 
 ```bash
+make migrate     # jalankan migrasi Alembic ke DB development
+make test-db     # (sekali) buat + migrasi database test
 make lint        # ruff (backend & worker)
 make typecheck   # mypy --strict (backend & worker) + tsc (frontend)
 make test        # pytest (backend & worker)
@@ -46,13 +49,19 @@ CI (GitHub Actions) menjalankan hal yang sama di setiap push/PR — lihat [.gith
 
 ```
 ai_asistent/
-├── backend/          # FastAPI: app/, tests/, pyproject.toml
-│   └── app/
-│       ├── api/routes/   # health.py (live/ready) — auth/files/chat menyusul
-│       ├── dependencies.py   # engine DB & Redis (lazy)
-│       ├── logging.py        # structured JSON logs
-│       ├── settings.py       # pydantic-settings (.env root, prefix APP_)
-│       └── main.py           # app factory
+├── backend/          # FastAPI: app/, migrations/, tests/, pyproject.toml
+│   ├── app/
+│   │   ├── api/routes/   # health.py, auth.py, workspaces.py — files/chat menyusul
+│   │   ├── db.py             # engine/session/Redis (lazy)
+│   │   ├── models.py         # User, Workspace, Membership, AuthSession, AuditEvent
+│   │   ├── deps.py           # current user, RBAC require_role, audit
+│   │   ├── security.py       # bcrypt + token opaque
+│   │   ├── audit.py          # JSONL audit sink
+│   │   ├── schemas.py        # Pydantic request/response
+│   │   ├── logging.py        # structured JSON logs
+│   │   ├── settings.py       # pydantic-settings (.env root, prefix APP_)
+│   │   └── main.py           # app factory
+│   └── migrations/       # Alembic (0001_initial)
 ├── worker/           # RQ worker: worker/jobs.py registry + tests/
 ├── frontend/         # Next.js App Router: app/, lib/
 ├── docs/             # catatan arsitektur & keputusan
@@ -61,6 +70,21 @@ ai_asistent/
 ├── .env.example          # template config, tanpa secret
 └── roadmap.md            # panduan eksekusi 10 fase
 ```
+
+## API — Fase 2 (auth & workspace)
+
+| Method | Path | Akses |
+|---|---|---|
+| POST | `/api/v1/auth/register` | publik → token |
+| POST | `/api/v1/auth/login` | publik → token |
+| POST | `/api/v1/auth/logout` | bearer (revoke semua session) |
+| GET | `/api/v1/auth/me` | bearer |
+| POST | `/api/v1/workspaces` | bearer (pembuat jadi admin) |
+| GET | `/api/v1/workspaces` | bearer (hanya miliknya) |
+| GET | `/api/v1/workspaces/{id}` | viewer+ |
+| PATCH | `/api/v1/workspaces/{id}` | admin |
+| POST | `/api/v1/workspaces/{id}/members` | admin |
+| DELETE | `/api/v1/workspaces/{id}/members/{user_id}` | admin |
 
 ## Prinsip yang dipegang (dari roadmap.md)
 
@@ -75,4 +99,4 @@ Salin `.env.example` → `.env`. Prefix variabel aplikasi: `APP_` (mis. `APP_DAT
 
 ## Langkah berikutnya
 
-Fase 2 (auth, workspace, RBAC, audit) → Fase 3 (upload + storage) → dst. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur end-to-end.
+Fase 3 (upload + object storage) → Fase 4 (parsing) → dst. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur end-to-end dan keputusan tiap fase.

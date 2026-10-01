@@ -12,6 +12,20 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ai_assistant
+          POSTGRES_PASSWORD: ai_assistant
+          POSTGRES_DB: ai_assistant_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U ai_assistant -d ai_assistant_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -24,8 +38,14 @@ jobs:
         run: uv run ruff check .
       - name: Typecheck
         run: uv run mypy app
+      - name: Migrate (test DB)
+        run: uv run alembic upgrade head
+        env:
+          APP_DATABASE_URL: postgresql+psycopg://ai_assistant:ai_assistant@localhost:5433/ai_assistant_test
       - name: Tests
         run: uv run pytest -q
+        env:
+          APP_DATABASE_URL: postgresql+psycopg://ai_assistant:ai_assistant@localhost:5433/ai_assistant_test
 
   worker:
     name: Worker (lint, types, tests)

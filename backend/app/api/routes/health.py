@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Response
 from sqlalchemy import text
 
-from app.dependencies import get_engine, get_redis
+from app.db import get_engine, get_redis
 
 router = APIRouter(prefix="/health", tags=["health"])
 

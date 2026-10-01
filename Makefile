@@ -1,17 +1,20 @@
-.PHONY: help infra infra-down install api worker web lint typecheck test smoke clean
+.PHONY: help infra infra-down install api worker web lint typecheck test test-db migrate migration smoke clean
 
 help:
 	@echo "AI Knowledge Assistant — perintah utama:"
-	@echo "  make infra        Jalankan Postgres+Redis+MinIO (docker compose up -d --wait)"
-	@echo "  make infra-down   Hentikan infra"
-	@echo "  make install      Install deps backend+worker (uv) dan frontend (npm)"
-	@echo "  make api          Jalankan backend API di :8000 (reload)"
-	@echo "  make worker       Jalankan RQ worker (queue: default)"
-	@echo "  make web          Jalankan frontend Next.js di :3000"
-	@echo "  make lint         Ruff check (backend & worker)"
-	@echo "  make typecheck    mypy (backend & worker) + tsc (frontend)"
-	@echo "  make test         pytest (backend & worker) + tsc (frontend)"
-	@echo "  make smoke        Cek /health/live dan /health/ready"
+	@echo "  make infra         Jalankan Postgres+Redis+MinIO (docker compose up -d --wait)"
+	@echo "  make infra-down    Hentikan infra"
+	@echo "  make install       Install deps backend+worker (uv) dan frontend (npm)"
+	@echo "  make api           Jalankan backend API di :8000 (reload)"
+	@echo "  make worker        Jalankan RQ worker (queue: default)"
+	@echo "  make web           Jalankan frontend Next.js di :3000"
+	@echo "  make migrate       Jalankan migrasi Alembic (DB development)"
+	@echo "  make migration m='pesan'   Buat file migrasi baru"
+	@echo "  make test-db       (Sekali) buat & migrasi database test"
+	@echo "  make lint          Ruff check (backend & worker)"
+	@echo "  make typecheck     mypy (backend & worker) + tsc (frontend)"
+	@echo "  make test          pytest (backend & worker) + tsc (frontend)"
+	@echo "  make smoke         Cek /health/live dan /health/ready"
 
 infra:
 	docker compose up -d --wait
@@ -32,6 +35,17 @@ worker:
 
 web:
 	cd frontend && npm run dev
+
+migrate:
+	cd backend && uv run alembic upgrade head
+
+migration:
+	@if [ -z "$(m)" ]; then echo "Pemakaian: make migration m='pesan migrasi'"; exit 1; fi
+	cd backend && uv run alembic revision -m "$(m)"
+
+test-db:
+	docker exec aiassistant-postgres psql -U ai_assistant -d postgres -c "DROP DATABASE IF EXISTS ai_assistant_test;" -c "CREATE DATABASE ai_assistant_test;"
+	cd backend && APP_DATABASE_URL="postgresql+psycopg://ai_assistant:ai_assistant@localhost:5433/ai_assistant_test" uv run alembic upgrade head
 
 lint:
 	cd backend && uv run ruff check .

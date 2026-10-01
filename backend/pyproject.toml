@@ -13,11 +13,14 @@ dependencies = [
     "alembic>=1.14",
     "redis>=5.2",
     "python-multipart>=0.0.20",
+    "bcrypt>=4.2",
+    "email-validator>=2.2",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
+    "pytest-env>=1.1",
     "httpx>=0.28",
     "ruff>=0.9",
     "mypy>=1.14",
@@ -38,3 +41,7 @@ plugins = []
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.pytest_env]
+APP_DATABASE_URL = "postgresql+psycopg://ai_assistant:ai_assistant@localhost:5433/ai_assistant_test"
+APP_REDIS_URL = "redis://localhost:6380/0"
