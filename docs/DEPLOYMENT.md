@@ -97,6 +97,7 @@ make restore DIR=backups/<timestamp> [DB=nama_database]
 | 429 massal | Rate limit terlalu ketat / klien loop | Naikkan `APP_API_RATE_LIMIT_PER_MIN` atau perbaiki klien; cek `Retry-After`. |
 | Web fallback error | Provider web/DDG menolak (403) | Degrade otomatis ke no-answer (bukan 5xx); pertimbangkan SearXNG self-host. |
 | Jawaban tidak grounded | Dokumen belum ter-index / embedding lama | Cek status `indexed`; jalankan reindex (embedding berubah antarversi). |
+| Runtime Error `Cannot find module './NNN.js'` di :3000 | Artefak `.next` campur aduk — `next build` dijalankan saat `next dev` masih aktif (atau build terpotong) | Hentikan `make web`, jalankan `make clean`, start ulang. Jangan jalankan `npm run build` bersamaan dengan dev server. |
 
 **Eskalasi**: incident commander mencatat timeline, dampak, dan keputusan. Setiap
 insiden kritis → postmortem maksimal 3 hari kerja.

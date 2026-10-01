@@ -23,6 +23,7 @@ help:
 	@echo "  make eval          Evaluasi kualitas RAG (ARGS='--write' untuk laporan)"
 	@echo "  make bench         Benchmark p50/p95/p99 (ARGS='--iterations 50')"
 	@echo "  make reembed       Hitung ulang embedding chunk (ARGS='--check' untuk cek)"
+	@echo "  make clean         Hapus artefak build (.next, __pycache__) — perbaiki 'Cannot find module ./*.js' (hentikan 'make web' dulu, lalu start ulang)"
 
 infra:
 	docker compose up -d --wait
