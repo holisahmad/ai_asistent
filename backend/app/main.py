@@ -46,3 +46,8 @@ def create_app() -> FastAPI:
     app.include_router(files.router, prefix="/api/v1")
     app.include_router(chat.router, prefix="/api/v1")
     return app
+
+
+# Instance ASGI untuk server produksi/dev (`uvicorn app.main:app`).
+# Factory tetap tersedia agar test dapat membuat app terisolasi.
+app = create_app()
