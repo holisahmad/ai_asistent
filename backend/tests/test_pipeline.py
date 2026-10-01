@@ -43,7 +43,7 @@ def ingest_mode_fixture(monkeypatch: Any) -> Any:
         calls.append((file_id, job_id))
         session = get_session_factory()()
         try:
-            from worker.pipeline import ingest_file
+            from ai_asistent_core.pipeline import ingest_file
 
             status = ingest_file(session, file_id, job_id)
             session.commit()

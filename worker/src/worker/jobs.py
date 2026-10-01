@@ -24,7 +24,7 @@ def ingest(file_id: str, job_id: str) -> dict[str, Any]:
 
 
 def _run_ingest(session: Any, file_id: str, job_id: str) -> str:
-    from worker.pipeline import ingest_file
+    from ai_asistent_core.pipeline import ingest_file
 
     return ingest_file(session, file_id, job_id)
 

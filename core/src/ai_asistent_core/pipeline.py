@@ -2,6 +2,8 @@
 
 Idempoten: dijalankan ulang pada file yang sama menghapus dokumen &
 chunk versi lama sebelum menulis ulang (roadmap: worker idempotent).
+Modul ini di core agar backend (mode inline/test) dan worker (RQ)
+menggunakan implementasi yang persis sama.
 """
 
 import json
@@ -24,7 +26,7 @@ from ai_asistent_core.vecstore import get_vector_store
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger("worker.pipeline")
+logger = logging.getLogger("ai_asistent_core.pipeline")
 
 
 def _now() -> datetime:

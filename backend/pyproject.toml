@@ -16,6 +16,7 @@ dependencies = [
     "bcrypt>=4.2",
     "email-validator>=2.2",
     "pgvector>=0.3",
+    "rq>=2.1",
     "ai-asistent-core",
 ]
 
