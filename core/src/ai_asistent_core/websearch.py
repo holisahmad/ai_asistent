@@ -3,8 +3,8 @@
 Prinsip roadmap: web search HANYA bila diizinkan dan bukti internal tidak
 mencukupi; sumber eksternal selalu ditandai; domain allowlist/denylist;
 timeout & rate limit; konten disanitasi sebelum masuk prompt LLM.
-Provider dapat diganti: duckduckgo (tanpa API key), searx (self-host),
-tavily (API key). `provider none` → web fallback mati total.
+Provider dapat diganti: bing_rss (tanpa API key, rekomendasi), duckduckgo,
+searx (self-host), tavily (API key). `provider none` → web fallback mati total.
 """
 
 import html as html_mod
@@ -16,6 +16,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import parse_qs, urlparse
+from xml.etree import ElementTree as ET
 
 import httpx
 
@@ -112,6 +113,53 @@ class DuckDuckGoSearch:
         )
         resp.raise_for_status()
         return parse_ddg_html(resp.text, max_results)
+
+
+def parse_bing_rss(xml_text: str, max_results: int) -> list[WebResult]:
+    """Parse feed RSS hasil pencarian Bing (www.bing.com/search?format=rss).
+
+    Bing menyediakan feed XML resmi tanpa API key & tanpa challenge
+    JavaScript — dipakai sebagai default karena DuckDuckGo diblokir DNS
+    (internet positif) dan menyajikan captcha bot di banyak jaringan.
+    """
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+    results: list[WebResult] = []
+    for item in root.iter("item"):
+        if len(results) >= max_results:
+            break
+        link = (item.findtext("link") or "").strip()
+        if not link.startswith("http"):
+            continue
+        results.append(
+            WebResult(
+                title=(item.findtext("title") or "").strip(),
+                url=link,
+                snippet=(item.findtext("description") or "").strip(),
+            )
+        )
+    return results
+
+
+class BingRssSearch:
+    """Pencarian Bing via feed RSS resmi — tanpa API key, tanpa captcha.
+
+    Alternatif utama untuk jaringan yang memblokir DuckDuckGo;
+    parser murni (ElementTree) tanpa dependensi tambahan.
+    """
+
+    def search(self, query: str, max_results: int) -> list[WebResult]:
+        resp = httpx.get(
+            "https://www.bing.com/search",
+            params={"q": query, "format": "rss"},
+            headers={"User-Agent": _USER_AGENT},
+            timeout=get_settings().web_search_timeout_seconds,
+            follow_redirects=True,
+        )
+        resp.raise_for_status()
+        return parse_bing_rss(resp.text, max_results)
 
 
 def parse_searx_json(data: object, max_results: int) -> list[WebResult]:
@@ -263,6 +311,8 @@ def fetch_page_text(url: str, max_bytes: int = 200_000) -> str:
 def get_web_search_provider() -> WebSearchProvider | None:
     """Provider dari settings; None bila web search dimatikan."""
     s = get_settings()
+    if s.web_search_provider == "bing_rss":
+        return BingRssSearch()
     if s.web_search_provider == "duckduckgo":
         return DuckDuckGoSearch()
     if s.web_search_provider == "searx":

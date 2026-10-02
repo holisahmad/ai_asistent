@@ -6,8 +6,10 @@ import pytest
 
 from ai_asistent_core.config import get_settings
 from ai_asistent_core.websearch import (
+    BingRssSearch,
     domain_allowed,
     get_web_search_provider,
+    parse_bing_rss,
     parse_ddg_html,
     parse_searx_json,
     rate_limit_allow,
@@ -79,6 +81,41 @@ def test_parse_ddg_html_unwraps_redirect() -> None:
     assert results[1].snippet == ""  # tidak ada snippet kedua
     # URL non-http (mis. relatif/janggal) dibuang
     assert parse_ddg_html('<a class="result__a" href="/relatif">x</a>', 5) == []
+
+
+def test_parse_bing_rss_extracts_items() -> None:
+    feed = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Bing: python</title>
+<item><title>Welcome to Python.org</title><link>https://www.python.org/</link>
+<description>Quick &amp; Easy to Learn</description></item>
+<item><title>Programiz</title><link>https://www.programiz.com/python</link>
+<description>Tutorial Python</description></item>
+</channel></rss>"""
+    results = parse_bing_rss(feed, max_results=5)
+    assert len(results) == 2
+    assert results[0].title == "Welcome to Python.org"
+    assert results[0].url == "https://www.python.org/"
+    assert results[0].snippet == "Quick & Easy to Learn"
+    assert results[1].url == "https://www.programiz.com/python"
+
+
+def test_parse_bing_rss_bounds_and_skips_bad_links() -> None:
+    feed = (
+        "<rss><channel>"
+        "<item><title>A</title><link>https://a.io/x</link></item>"
+        "<item><title>B</title><link>https://b.io/x</link></item>"
+        "<item><title>C</title><link></link></item>"
+        "</channel></rss>"
+    )
+    assert len(parse_bing_rss(feed, max_results=1)) == 1  # batas max_results
+    out = parse_bing_rss(feed, max_results=5)
+    assert len(out) == 2  # link kosong/non-http dibuang
+    assert parse_bing_rss("bukan xml <>", 5) == []  # XML rusak → aman kosong
+
+
+def test_get_provider_bing_rss(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(get_settings(), "web_search_provider", "bing_rss")
+    assert isinstance(get_web_search_provider(), BingRssSearch)
 
 
 def test_parse_searx_json_bounds_and_skips_bad_items() -> None:

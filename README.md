@@ -79,7 +79,7 @@ ai_asistent/
 │       ├── retrieval.py  # hybrid: dense + keyword FTS + fusi RRF (ACL di SQL)
 │       ├── llm.py        # adapter LLM: local stub / OpenAI SDK / openai_compat
 │       ├── rag.py        # orkestrasi: retrieve → LLM → sitasi/no-answer/web fallback
-│       ├── websearch.py  # Fase 7: DDG/SearXNG/Tavily + ACL domain + rate limit
+│       ├── websearch.py  # Fase 7: Bing RSS/DDG/SearXNG/Tavily + ACL domain + rate limit
 │       ├── resilience.py # Fase 9: retry/backoff + circuit breaker
 │       ├── guards.py     # Fase 9: pemindaian malware upload (EICAR/MZ/ELF/NUL)
 │       ├── injection.py  # Fase 9: deteksi & mitigasi prompt-injection
