@@ -43,15 +43,51 @@ Langkah:
    `docs/reports/eval-<stamp>.md` (sudah gitignored).
 2. Catat metrik acuan di dokumen ini: recall@5, MRR, citation correctness, no-answer
    accuracy, hallusinasi, false-no-answer, plus latensi p50/p95 dari `make bench`.
-3. Tambah opsi `scripts/eval_rag.py` untuk menjalankan dataset dengan konfigurasi
-   bergantian (mis. `--set reranker_enabled=true`) agar perbandingan A/B reproducible.
+3. Tambah opsi `scripts/eval_rag.py --set KEY=VALUE` (boleh berulang) untuk menjalankan
+   dataset dengan konfigurasi bergantian agar perbandingan A/B reproducible.
 
 File: [scripts/eval_rag.py](scripts/eval_rag.py), [scripts/bench.py](scripts/bench.py),
 [core/src/ai_asistent_core/eval.py](core/src/ai_asistent_core/eval.py).
 
 Kriteria diterima: angka acuan terdokumentasi; quality gate yang ada tetap hijau.
 
-Baseline (isi setelah dijalankan): recall@5 = `<…>`, MRR = `<…>`, p95 = `<…> ms`.
+### Baseline terukur (2 Oktober 2026)
+
+`make eval ARGS=--write` (LLM stub, `kb-retrieval-mini` v1, 15 kueri):
+
+| Metrik | Nilai |
+| --- | --- |
+| recall@5 | 1.0 |
+| MRR | 1.0 |
+| citation_correctness | 1.0 |
+| no_answer_accuracy | 1.0 |
+| hallucination_rate | 0.0 |
+| false_no_answer_rate | 0.0 |
+| latency p50 / p95 | 0.0169 s / 0.0275 s |
+| total_tokens_est / cost | 3182 / $0.0005 |
+
+`make bench ARGS='--iterations 30'`: retrieval p50 6.0 ms / p95 13.3 ms;
+chat+LLM p50 6.4 ms / p95 12.8 ms; throughput 63.6 kueri/detik; ~$0.001029/run.
+
+### Temuan Fase 0 — tidak ada headroom
+
+Semua metrik kualitas sudah **jenuh (1.0)** pada dataset ini, sehingga reranker maupun
+perbaikan retrieval lain **tidak bisa dibuktikan** di sini: tidak ada ruang untuk naik,
+dan `recall@5 ≥ 0.8` di CI juga tidak akan pernah turun. Dataset gate sengaja dipertahankan
+sebagai jaring regresi, bukan tolok ukur perbaikan.
+
+Konsekuensi: sebelum Fase 1 diklaim berhasil, perlu dataset **headroom** terpisah
+(`docs/eval/retrieval_dataset_hard.json`) berisi dokumen distraktor (kata kunci mirip,
+jawaban salah) dan kueri parafrase yang sengaja tidak memakai kata kunci dokumen target.
+Dataset itu **tidak** disambungkan ke quality gate CI, hanya untuk mengukur uplift.
+
+Perintah A/B sekarang:
+
+```bash
+make eval ARGS='--write'
+make eval ARGS="--dataset docs/eval/retrieval_dataset_hard.json --write"
+make eval ARGS='--set retrieval_top_k=3'
+```
 
 ---
 
@@ -77,8 +113,12 @@ File: baru `core/src/ai_asistent_core/rerank.py`; ubah
 [retrieval.py](core/src/ai_asistent_core/retrieval.py),
 [config.py](core/src/ai_asistent_core/config.py), [rag.py](core/src/ai_asistent_core/rag.py).
 
+Prasyarat (hasil temuan Fase 0): buat `docs/eval/retrieval_dataset_hard.json` dan catat
+baseline-nya lebih dulu, karena dataset gate sudah jenuh 1.0 dan tidak punya headroom.
+
 Test & eval: unit test reranker (deterministik, batas top_n, tanpa regression urutan saat
-skor sama) + jalankan `test_retrieval_eval.py` dan bandingkan recall@5/MRR sebelum-sesudah.
+skor sama) + jalankan `test_retrieval_eval.py` (jaring regresi) dan bandingkan recall@5/MRR
+pada dataset hard sebelum-sesudah.
 
 Kriteria diterima: tidak ada regresi ACL; quality gate hijau; delta recall@5/MRR dicatat
 di laporan. Bila uplift tidak terukur, default tetap `false` dan temuan dilaporkan

@@ -44,10 +44,30 @@ def main() -> int:
     )
     parser.add_argument("--write", action="store_true", help="tulis laporan markdown")
     parser.add_argument("--price-per-1k", type=float, default=0.00015, help="USD per 1K token")
+    parser.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "override setting untuk perbandingan A/B, boleh berulang "
+            "(mis. --set retrieval_top_k=3 --set reranker_enabled=true)"
+        ),
+    )
     args = parser.parse_args()
 
     if args.llm == "stub":
         os.environ["APP_LLM_PROVIDER"] = "local"
+
+    # Override diterapkan setelah --llm agar nilai eksplisit --set menang.
+    overrides: dict[str, str] = {}
+    for item in args.set:
+        if "=" not in item:
+            parser.error(f"--set harus berformat KEY=VALUE, diterima: {item!r}")
+        key, value = item.split("=", 1)
+        env_key = key if key.startswith("APP_") else f"APP_{key.upper()}"
+        os.environ[env_key] = value
+        overrides[env_key] = value
 
     import app.api.routes.files as files_route
 
@@ -108,8 +128,9 @@ def main() -> int:
         )
         if resp.status_code == 201:
             seeded += 1
+    suffix = f", override={overrides}" if overrides else ""
     print(f"Dataset '{dataset.name}' v{dataset.version}: {seeded} dokumen baru disemai, "
-          f"{len(dataset.queries)} kueri, LLM={args.llm}")
+          f"{len(dataset.queries)} kueri, LLM={args.llm}{suffix}")
 
     session = get_session_factory()()
     ranked_filenames: list[list[str]] = []
@@ -178,6 +199,7 @@ def main() -> int:
             "",
             f"- Dataset: `{dataset.name}` v{dataset.version}",
             f"- LLM: `{args.llm}`",
+            f"- Override: `{overrides or '—'}`",
             f"- Kueri: {len(dataset.queries)} ({(expected.count(None))} tanpa jawaban)",
             "",
             "## Metrik",
