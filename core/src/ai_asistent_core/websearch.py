@@ -101,7 +101,7 @@ def query_terms(query: str) -> list[str]:
     ]
 
 
-def relevance_score(result: "WebResult", query: str) -> float:
+def relevance_score(result: WebResult, query: str) -> float:
     """Skor 0..1: fraksi term kueri yang muncul di judul/snippet hasil."""
     terms = query_terms(query)
     if not terms:
@@ -110,7 +110,7 @@ def relevance_score(result: "WebResult", query: str) -> float:
     return sum(1 for t in terms if t in haystack) / len(terms)
 
 
-def rank_by_relevance(results: list["WebResult"], query: str) -> list["WebResult"]:
+def rank_by_relevance(results: list[WebResult], query: str) -> list[WebResult]:
     """Stabil-sort hasil menurut relevansi ke kueri (urutan asli jadi tiebreak).
 
     Membantu kueri Bahasa Indonesia: Bing kadang menaruh halaman generik di
@@ -123,6 +123,16 @@ def rank_by_relevance(results: list["WebResult"], query: str) -> list["WebResult
         key=lambda pair: (-relevance_score(pair[1], query), pair[0]),
     )
     return [r for _, r in order]
+
+
+def filter_relevant(
+    results: list[WebResult], query: str, min_score: float
+) -> list[WebResult]:
+    """Buang hasil berrelevansi rendah (skor < min_score) sebelum dipakai.
+
+    Dipakai fallback web agar konteks lemah tidak pernah masuk prompt LLM.
+    """
+    return [r for r in results if relevance_score(r, query) >= min_score]
 
 
 def parse_ddg_html(page: str, max_results: int) -> list[WebResult]:

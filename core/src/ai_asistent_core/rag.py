@@ -22,7 +22,13 @@ from ai_asistent_core.injection import harden_context
 from ai_asistent_core.llm import NO_ANSWER, LLMProvider, _is_no_answer, get_llm_provider
 from ai_asistent_core.models import WebSearchLog
 from ai_asistent_core.retrieval import RetrievedChunk, retrieve
-from ai_asistent_core.websearch import fetch_page_text, web_search
+from ai_asistent_core.websearch import (
+    WebResult,
+    fetch_page_text,
+    filter_relevant,
+    relevance_score,
+    web_search,
+)
 
 logger = logging.getLogger("ai_asistent_core.rag")
 
@@ -127,22 +133,45 @@ def _attempt_web_fallback(
         _log_web_search(db, workspace_id, question, list(rejected), error=str(exc)[:200])
         return None
 
-    entries: list[dict[str, object]] = [
-        {"title": r.title, "url": r.url, "fetched": False, "used": False} for r in results
-    ] + rejected
-    _log_web_search(db, workspace_id, question, entries, results_count=len(results))
-    if not results:
+    # Saring hasil berrelevansi rendah: konteks lemah tidak boleh masuk prompt.
+    entries: list[dict[str, object]] = []
+    for r in results:
+        score = relevance_score(r, question)
+        entries.append(
+            {
+                "title": r.title,
+                "url": r.url,
+                "score": round(score, 3),
+                "fetched": False,
+                "used": False,
+                "rejected": None if score >= s.web_evidence_min_relevance else "low_relevance",
+            }
+        )
+    entries += rejected
+    kept = filter_relevant(results, question, s.web_evidence_min_relevance)
+    _log_web_search(db, workspace_id, question, entries, results_count=len(kept))
+    min_results = max(1, s.web_evidence_min_results)
+    if len(kept) < min_results:
+        logger.info(
+            "bukti web tidak cukup (lolos=%d dari %d; min_relevance=%.2f, min_results=%d)",
+            len(kept),
+            len(results),
+            s.web_evidence_min_relevance,
+            min_results,
+        )
         return None
 
     contexts: list[str] = []
+    used: list[WebResult] = []
     used_urls: list[str] = []
-    for r in results[:3]:  # fetch halaman teratas saja (latency & biaya)
+    for r in kept[:3]:  # fetch halaman teratas saja (latency & biaya)
         body = fetch_page_text(r.url) or r.snippet
         for e in entries:
             if e["url"] == r.url:
                 e["fetched"] = bool(body)
         if body:
             contexts.append(f"Sumber web: {r.title} ({r.url})\n{body}")
+            used.append(r)
             used_urls.append(r.url)
     if not contexts:
         return None
@@ -154,13 +183,13 @@ def _attempt_web_fallback(
     citations = [
         CitationOut(
             idx=i + 1,
-            filename=results[i].title,
+            filename=r.title,
             locator_type="url",
-            snippet=results[i].snippet or contexts[i][:200],
+            snippet=r.snippet or contexts[i][:200],
             source_type="web",
-            url=results[i].url,
+            url=r.url,
         )
-        for i in range(min(len(results), len(contexts)))
+        for i, r in enumerate(used)
     ]
     return RagAnswer(
         text=result.text.strip(),

@@ -256,3 +256,59 @@ def test_internal_grounded_answer_untouched_by_web(
     done = _parse_sse(r.text)["done"]
     assert done["answer_kind"] == "grounded"
     assert provider.calls == 0
+
+
+def test_web_fallback_rejects_low_relevance_results(
+    client: Any, monkeypatch: Any, web_env: dict[str, Any]
+) -> None:
+    """Hasil web tak relevan tidak disuntik ke prompt → no_answer + log."""
+    headers = _mk_user(client, "web7@example.com")
+    ws_id = _mk_ws(client, headers)
+    provider = _RecordingProvider(
+        [WebResult(title="Kucing lucu", url="https://cats.example.com", snippet="video kucing")]
+    )
+    monkeypatch.setattr(
+        "ai_asistent_core.websearch.get_web_search_provider", lambda: provider
+    )
+
+    r = client.post(
+        f"{WS}/{ws_id}/chat/stream",
+        headers=headers,
+        json={"question": "berapa kurs dolar hari ini?", "allow_web": True},
+    )
+    assert _parse_sse(r.text)["done"]["answer_kind"] == "no_answer"
+    assert provider.calls == 1
+    # Konteks lemah tidak pernah sampai ke LLM.
+    assert not any("Sumber web" in c for c in web_env["llm"].calls)
+
+    session = get_session_factory()()
+    try:
+        logs = session.execute(select(WebSearchLog)).scalars().all()
+        assert len(logs) == 1
+        assert logs[0].results_count == 0
+        assert "low_relevance" in (logs[0].log_json or "")
+    finally:
+        session.close()
+
+
+def test_web_evidence_min_results_gate(
+    client: Any, monkeypatch: Any, web_env: dict[str, Any]
+) -> None:
+    """Hasil relevan tapi jumlahnya < min_results → bukti dianggap tak cukup."""
+    monkeypatch.setattr(get_settings(), "web_evidence_min_results", 2)
+    headers = _mk_user(client, "web8@example.com")
+    ws_id = _mk_ws(client, headers)
+    provider = _RecordingProvider(
+        [WebResult(title="Bank Indonesia", url="https://bi.go.id/kurs", snippet="Kurs harian")]
+    )
+    monkeypatch.setattr(
+        "ai_asistent_core.websearch.get_web_search_provider", lambda: provider
+    )
+
+    r = client.post(
+        f"{WS}/{ws_id}/chat/stream",
+        headers=headers,
+        json={"question": "berapa kurs dolar hari ini?", "allow_web": True},
+    )
+    assert _parse_sse(r.text)["done"]["answer_kind"] == "no_answer"
+    assert not any("Sumber web" in c for c in web_env["llm"].calls)

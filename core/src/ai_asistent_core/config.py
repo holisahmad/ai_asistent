@@ -85,6 +85,11 @@ class CoreSettings(BaseSettings):
     # CSV domain (kosong = semua diizinkan); denylist menang atas allowlist
     web_search_domain_allowlist_csv: str = ""
     web_search_domain_denylist_csv: str = ""
+    # Ambang kecukupan bukti web (Fase 7/9): hanya hasil dengan skor relevansi
+    # >= ambang yang dipakai, dan bila yang lolos < web_evidence_min_results,
+    # fallback web dianggap tak cukup → no_answer (tidak menyuntik konteks lemah).
+    web_evidence_min_relevance: float = 0.34
+    web_evidence_min_results: int = 1
 
     @property
     def database_url_sync(self) -> str:

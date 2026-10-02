@@ -9,6 +9,7 @@ from ai_asistent_core.websearch import (
     BingRssSearch,
     WebResult,
     domain_allowed,
+    filter_relevant,
     get_web_search_provider,
     normalize_query,
     parse_bing_rss,
@@ -229,6 +230,15 @@ def test_relevance_score_and_stable_ranking() -> None:
     # kueri tanpa term bermakna → skor 0, urutan tetap
     assert relevance_score(generic, "apa itu") == 0.0
     assert rank_by_relevance([relevant, generic], "apa itu") == [relevant, generic]
+
+
+def test_filter_relevant_drops_low_scores() -> None:
+    query = "apa itu postgresql"
+    good = WebResult("PostgreSQL docs", "https://www.postgresql.org/", "panduan resmi")
+    weak = WebResult("Kucing lucu", "https://cats.example.com", "video kucing")
+    assert filter_relevant([good, weak], query, 0.34) == [good]
+    assert filter_relevant([weak], query, 0.34) == []
+    assert filter_relevant([weak], query, 0.0) == [weak]  # ambang 0 = tanpa filter
 
 
 def test_web_search_normalizes_query_for_provider(monkeypatch: pytest.MonkeyPatch) -> None:
