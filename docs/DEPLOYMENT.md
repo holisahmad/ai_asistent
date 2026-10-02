@@ -96,7 +96,7 @@ make restore DIR=backups/<timestamp> [DB=nama_database]
 | `/health/ready` 503 | DB/Redis/MinIO turun | Cek container/instance; pulihkan ketergantungan; API tetap liveness OK. |
 | Chat lambat / timeout | Provider LLM lambat / breaker terbuka | Cek metrik breaker & error log; kurangi `APP_RETRIEVAL_TOP_K`; fallback provider. |
 | 429 massal | Rate limit terlalu ketat / klien loop | Naikkan `APP_API_RATE_LIMIT_PER_MIN` atau perbaiki klien; cek `Retry-After`. |
-| Web fallback error | Provider web menolak/diblokir (403, captcha, atau DNS internet positif mengarahkan ke IP blokir) | Ganti `APP_WEB_SEARCH_PROVIDER` (rekomendasi `bing_rss` — feed RSS resmi tanpa key); degrade otomatis ke no-answer (bukan 5xx). |
+| Web fallback error / hasil tak relevan | Provider web menolak/diblokir (403, captcha, hijack DNS) atau mengembalikan hasil di luar kueri (mis. Bing RSS bisa menyajikan item acak per jaringan) | Isi `APP_WEB_SEARCH_FALLBACK_PROVIDERS_CSV` (mis. `duckduckgo`) agar provider cadangan dipakai saat provider utama error atau semua hasilnya di bawah `APP_WEB_EVIDENCE_MIN_RELEVANCE`; degrade otomatis ke no-answer (bukan 5xx). |
 | Jawaban tidak grounded | Dokumen belum ter-index / embedding lama | Cek status `indexed`; jalankan reindex (embedding berubah antarversi). |
 | Runtime Error `Cannot find module './NNN.js'` di :3000 | Artefak `.next` campur aduk — `next build` dijalankan saat `next dev` masih aktif (atau build terpotong) | Hentikan `make web`, jalankan `make clean`, start ulang. Jangan jalankan `npm run build` bersamaan dengan dev server. |
 

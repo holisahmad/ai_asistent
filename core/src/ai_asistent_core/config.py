@@ -74,6 +74,10 @@ class CoreSettings(BaseSettings):
     # Fase 7: web fallback
     web_fallback_mode: str = "internal_only"  # internal_only | internal_plus_web
     web_search_provider: str = "none"  # none | bing_rss | duckduckgo | searx | tavily
+    # Provider cadangan (CSV) yang dicoba bila provider utama error atau
+    # hasilnya semua di bawah web_evidence_min_relevance — mesin pencari bisa
+    # berubah-ubah per jaringan, jadi rantai ini menjaga fallback tetap berguna.
+    web_search_fallback_providers_csv: str = ""
     web_search_base_url: str | None = None  # untuk searx (mis. http://searx:8080)
     tavily_api_key: str | None = None
     web_search_timeout_seconds: float = 8.0

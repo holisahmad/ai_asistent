@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 
+import httpx
 import pytest
 
 from ai_asistent_core.config import get_settings
@@ -355,3 +356,86 @@ def test_bing_rss_omits_market_when_empty(monkeypatch: pytest.MonkeyPatch) -> No
     BingRssSearch().search("q", 3)
     assert "mkt" not in captured
     assert "setlang" not in captured
+
+
+# --- Failover provider --------------------------------------------------------
+
+
+class _StaticProvider:
+    def __init__(self, results: list[WebResult]) -> None:
+        self.results = results
+        self.calls = 0
+
+    def search(self, query: str, max_results: int) -> list[WebResult]:
+        self.calls += 1
+        return self.results
+
+
+_IRRELEVANT = WebResult("Kucing lucu", "https://cats.example.com", "video kucing")
+_RELEVANT = WebResult("PostgreSQL docs", "https://www.postgresql.org/", "panduan resmi")
+
+
+def _enable_fallback(monkeypatch: pytest.MonkeyPatch, csv: str) -> None:
+    monkeypatch.setattr(get_settings(), "web_search_provider", "bing_rss")
+    monkeypatch.setattr(get_settings(), "web_search_fallback_providers_csv", csv)
+
+
+def test_web_search_falls_back_when_primary_irrelevant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provider utama tanpa hasil relevan → provider cadangan yang dipakai."""
+    _enable_fallback(monkeypatch, "duckduckgo")
+    monkeypatch.setattr(
+        "ai_asistent_core.websearch.get_web_search_provider", lambda: _StaticProvider([_IRRELEVANT])
+    )
+    monkeypatch.setattr(
+        "ai_asistent_core.websearch._build_provider",
+        lambda name, s: _StaticProvider([_RELEVANT]),
+    )
+    out = web_search("apa itu postgresql")
+    assert [r.url for r in out] == ["https://www.postgresql.org/"]
+
+
+def test_web_search_without_fallback_returns_primary_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tanpa cadangan, hasil utama dikembalikan apa adanya (gating di RAG)."""
+    _enable_fallback(monkeypatch, "")
+    monkeypatch.setattr(
+        "ai_asistent_core.websearch.get_web_search_provider", lambda: _StaticProvider([_IRRELEVANT])
+    )
+    out = web_search("apa itu postgresql")
+    assert [r.url for r in out] == ["https://cats.example.com"]
+
+
+def test_web_search_falls_back_when_primary_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Error provider utama (bukan cadangan terakhir) → coba provider cadangan."""
+
+    class _Boom:
+        def search(self, query: str, max_results: int) -> list[WebResult]:
+            raise httpx.ConnectError("boom")
+
+    _enable_fallback(monkeypatch, "duckduckgo")
+    monkeypatch.setattr(get_settings(), "external_max_attempts", 1)
+    monkeypatch.setattr("ai_asistent_core.websearch.get_web_search_provider", lambda: _Boom())
+    monkeypatch.setattr(
+        "ai_asistent_core.websearch._build_provider",
+        lambda name, s: _StaticProvider([_RELEVANT]),
+    )
+    out = web_search("apa itu postgresql")
+    assert [r.url for r in out] == ["https://www.postgresql.org/"]
+
+
+def test_web_search_skips_misconfigured_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cadangan yang salah konfigurasi dilewati, bukan menjatuhkan pencarian."""
+    _enable_fallback(monkeypatch, "tavily")
+    monkeypatch.setattr(get_settings(), "tavily_api_key", None)
+    monkeypatch.setattr(
+        "ai_asistent_core.websearch.get_web_search_provider", lambda: _StaticProvider([_IRRELEVANT])
+    )
+    out = web_search("apa itu postgresql")
+    assert [r.url for r in out] == ["https://cats.example.com"]

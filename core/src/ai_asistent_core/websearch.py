@@ -15,13 +15,14 @@ import time
 import unicodedata
 from collections import deque
 from dataclasses import dataclass
+from functools import partial
 from typing import Protocol
 from urllib.parse import parse_qs, urlparse
 from xml.etree import ElementTree as ET
 
 import httpx
 
-from ai_asistent_core.config import csv_list, get_settings
+from ai_asistent_core.config import CoreSettings, csv_list, get_settings
 from ai_asistent_core.resilience import RetryPolicy, call_with_retry, get_breaker
 
 logger = logging.getLogger("ai_asistent_core.websearch")
@@ -392,22 +393,49 @@ def fetch_page_text(url: str, max_bytes: int = 200_000) -> str:
 # --- Facade -------------------------------------------------------------------
 
 
-def get_web_search_provider() -> WebSearchProvider | None:
-    """Provider dari settings; None bila web search dimatikan."""
-    s = get_settings()
-    if s.web_search_provider == "bing_rss":
+def _build_provider(name: str, s: CoreSettings) -> WebSearchProvider | None:
+    """Bangun provider dari nama; None bila nama dinonaktifkan/tak dikenal.
+
+    Melempar RuntimeError bila provider butuh konfigurasi yang belum diset
+    (searx tanpa base URL, tavily tanpa API key).
+    """
+    if name == "bing_rss":
         return BingRssSearch()
-    if s.web_search_provider == "duckduckgo":
+    if name == "duckduckgo":
         return DuckDuckGoSearch()
-    if s.web_search_provider == "searx":
+    if name == "searx":
         if not s.web_search_base_url:
             raise RuntimeError("APP_WEB_SEARCH_BASE_URL belum diset untuk searx")
         return SearxSearch(s.web_search_base_url)
-    if s.web_search_provider == "tavily":
+    if name == "tavily":
         if not s.tavily_api_key:
             raise RuntimeError("APP_TAVILY_API_KEY belum diset")
         return TavilySearch(s.tavily_api_key)
     return None
+
+
+def get_web_search_provider() -> WebSearchProvider | None:
+    """Provider utama dari settings; None bila web search dimatikan."""
+    s = get_settings()
+    return _build_provider(s.web_search_provider, s)
+
+
+def _provider_attempts(
+    primary: WebSearchProvider, s: CoreSettings
+) -> list[tuple[str, WebSearchProvider]]:
+    """Rantai provider: utama dulu, lalu cadangan (CSV) yang valid & unik."""
+    attempts: list[tuple[str, WebSearchProvider]] = [(s.web_search_provider, primary)]
+    for name in csv_list(s.web_search_fallback_providers_csv):
+        if any(name == existing for existing, _ in attempts):
+            continue
+        try:
+            provider = _build_provider(name, s)
+        except RuntimeError as exc:
+            logger.warning("provider web cadangan '%s' dilewati: %s", name, exc)
+            continue
+        if provider is not None:
+            attempts.append((name, provider))
+    return attempts
 
 
 def web_search(
@@ -432,20 +460,45 @@ def web_search(
     breaker = get_breaker("web_search")
     if not breaker.allow():
         raise RuntimeError("Web search circuit breaker OPEN — coba lagi nanti")
-    try:
-        raw = call_with_retry(
-            lambda: provider.search(query, s.web_search_max_results),
-            policy=RetryPolicy(
-                attempts=s.external_max_attempts,
-                base_delay=s.external_retry_base_seconds,
-                max_delay=s.external_retry_max_seconds,
-            ),
-            retry_on=(httpx.HTTPError, OSError),
+    policy = RetryPolicy(
+        attempts=s.external_max_attempts,
+        base_delay=s.external_retry_base_seconds,
+        max_delay=s.external_retry_max_seconds,
+    )
+
+    # Coba provider utama; bila error atau hasilnya semua tak relevan, lanjut
+    # ke provider cadangan. Set dengan skor terbaik diingat sebagai hasil akhir.
+    attempts = _provider_attempts(provider, s)
+    raw: list[WebResult] = []
+    best_raw: list[WebResult] = []
+    best_score = -1.0
+    for idx, (name, prov) in enumerate(attempts):
+        try:
+            found = call_with_retry(
+                partial(prov.search, query, s.web_search_max_results),
+                policy=policy,
+                retry_on=(httpx.HTTPError, OSError),
+            )
+        except Exception:
+            if idx == len(attempts) - 1:
+                breaker.record_failure()
+                raise
+            logger.warning("provider web '%s' gagal; mencoba provider cadangan", name)
+            continue
+        if not found:
+            logger.info("provider web '%s' tidak mengembalikan hasil", name)
+            continue
+        raw = found
+        top = max(relevance_score(r, query) for r in found)
+        if top > best_score:
+            best_raw, best_score = found, top
+        if top >= s.web_evidence_min_relevance:
+            break
+        logger.info(
+            "provider web '%s' hasilnya tak relevan (skor teratas %.2f)", name, top
         )
-    except Exception:
-        breaker.record_failure()
-        raise
     breaker.record_success()
+    raw = best_raw or raw
     allow = csv_list(s.web_search_domain_allowlist_csv)
     deny = csv_list(s.web_search_domain_denylist_csv)
     results: list[WebResult] = []
