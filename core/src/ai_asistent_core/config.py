@@ -64,6 +64,14 @@ class CoreSettings(BaseSettings):
     retrieval_top_k: int = 6
     retrieval_candidates: int = 24
     retrieval_min_score: float = 0.05
+    # Fase 1 upgrade: reranker penyusun ulang kandidat retrieval.
+    # Aktif sejak terbukti menaikkan kualitas pada dataset headroom
+    # (recall@5 0.9→1.0, MRR 0.80→0.88, sitasi 0.7→0.8) tanpa regresi di
+    # dataset gate — lihat docs/UPGRADE_PLAN.md. Set false bila perlu
+    # mengembalikan perilaku lama (urutan murni fusi).
+    reranker_enabled: bool = True
+    reranker_provider: str = "lexical"  # lexical | none
+    reranker_top_n: int = 0  # batas kandidat depan yang diurut ulang; 0 = semua
     llm_provider: str = "local"  # local | openai | openai_compat
     openai_chat_model: str = "gpt-4o-mini"
     # Endpoint OpenAI-compatible (vLLM/Combo/gateway lokal); kosong = api.openai.com

@@ -28,9 +28,19 @@ from ai_asistent_core.websearch import (
 
 
 @pytest.fixture(autouse=True)
-def _clean_rate_limit() -> Iterator[None]:
+def _isolated_web_env() -> Iterator[None]:
+    """Hermetik: tanpa jaringan & tanpa rantai provider cadangan.
+
+    `.env` lokal boleh menyetel APP_WEB_SEARCH_FALLBACK_PROVIDERS_CSV; tanpa
+    pengosongan ini, test yang memalsukan provider utama ikut menjalankan
+    pencarian sungguhan lewat provider cadangan.
+    """
+    s = get_settings()
+    was_fallback = s.web_search_fallback_providers_csv
+    s.web_search_fallback_providers_csv = ""
     reset_rate_limit()
     yield
+    s.web_search_fallback_providers_csv = was_fallback
     reset_rate_limit()
 
 

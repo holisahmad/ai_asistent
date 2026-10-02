@@ -2,8 +2,9 @@
 
 ACL: setiap pencarian difilter `workspace_id` di level SQL — konteks tidak
 pernah keluar dari workspace sebelum sampai ke LLM (roadmap: ACL sebelum
-konteks diberikan ke LLM). Query rewriting opsional menyusul; reranking di
-sini fusi sederhana deterministik (RRF + skor cosine), tanpa model eksternal.
+konteks diberikan ke LLM). Query rewriting opsional menyusul; fusi sederhana
+deterministik (RRF + skor cosine) tanpa model eksternal, dilengkapi tahap
+reranker opsional (`rerank.py`) yang menyusun ulang kandidat terfusi.
 """
 
 import re
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from ai_asistent_core.config import get_settings
 from ai_asistent_core.embeddings import embed_batch
+from ai_asistent_core.rerank import rerank_candidates
 from ai_asistent_core.vecstore import get_vector_store
 
 # Bobot fusi: skor akhir = dense_weight * skor_dense_norm + keyword_weight * skor_kw_norm
@@ -167,7 +169,7 @@ def retrieve(
     # 2) Keyword: FTS Postgres pada tabel chunk (ACL di SQL).
     keyword = _keyword_search(db, workspace_id, question, n_candidates)
 
-    # 3) Fusi + threshold + top_k.
+    # 3) Fusi + threshold.
     fused = _fuse(dense, keyword, s.retrieval_min_score)
 
     # 4) Fallback deterministik: bila semua di bawah threshold tapi ada
@@ -179,5 +181,8 @@ def retrieve(
             key=lambda c: c.score or c.dense_score or c.keyword_score,
         )
         fused = [best]
+
+    # 5) Reranker opsional (Fase 1): urut ulang kandidat terfusi sebelum top_k.
+    fused = rerank_candidates(question, fused)
 
     return fused[:k]
