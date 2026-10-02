@@ -287,7 +287,7 @@ class TestAnswerQuestionModes:
     def test_auto_mode_falls_back_to_generative_when_low_score(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Threshold 0.55, query punya banyak term yang tidak ada di chunk → skor rendah → generatif."""
+        """Threshold 0.55, query banyak term tidak ada di chunk → skor rendah → generatif."""
         from unittest.mock import MagicMock
 
         import ai_asistent_core.rag as rag_mod
