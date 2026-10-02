@@ -158,4 +158,4 @@ Salin `.env.example` → `.env`. Prefix variabel aplikasi: `APP_` (mis. `APP_DAT
 
 ## Langkah berikutnya
 
-Fase 1–10 selesai. Berikutnya (pasca-roadmap): pilot dengan data nyata yang disetujui, tuning reranker/prompt/chunking berdasar laporan evaluasi, dan migrasi vector store ke Qdrant bila pgvector tidak lagi memadai. Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur & keputusan, dan [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) untuk deployment, operasi, incident response, rollback, serta scaling.
+Fase 1–10 selesai. Berikutnya (pasca-roadmap): pilot dengan data nyata yang disetujui, tuning reranker/prompt/chunking berdasar laporan evaluasi, dan migrasi vector store ke Qdrant bila pgvector tidak lagi memadai. Urutan pengerjaan peningkatannya ada di [docs/UPGRADE_PLAN.md](docs/UPGRADE_PLAN.md). Lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) untuk alur & keputusan, dan [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) untuk deployment, operasi, incident response, rollback, serta scaling.
