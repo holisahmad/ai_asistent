@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from collections import deque
 from dataclasses import dataclass
 from typing import Protocol
@@ -52,9 +53,76 @@ def _http_get(url: str, timeout: float) -> httpx.Response:
     )
 
 
+_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u200b\u200c\u200d\ufeff]")
+_QUOTE_CHARS = "\"'“”‘’«»"
+_WORD_RE = re.compile(r"[a-z0-9]+")
+# Kata fungsi yang tidak menambah sinyal relevansi (ID + Inggris).
+_STOPWORDS = frozenset(
+    {
+        "apa", "siapa", "kapan", "dimana", "mana", "bagaimana", "mengapa", "kenapa",
+        "di", "ke", "dari", "yang", "dan", "atau", "itu", "ini", "adalah", "akan",
+        "untuk", "dengan", "pada", "dalam", "tentang", "sebuah", "para", "juga",
+        "the", "a", "an", "of", "to", "is", "are", "how", "what", "why", "when",
+        "where", "which", "and", "or", "for", "with", "about",
+    }
+)
+
+
 def _clean_inline_html(raw: str) -> str:
     """Bersihkan teks dalam tag HTML (entity + tag sisa + whitespace)."""
     return re.sub(r"\s+", " ", html_mod.unescape(re.sub(r"<[^>]+>", "", raw))).strip()
+
+
+def normalize_query(query: str, max_chars: int = 300) -> str:
+    """Rapikan kueri sebelum dikirim ke mesin pencari (fokus kueri ID dari chat).
+
+    Chat pengguna sering menghasilkan kueri mentah: kutip copy-paste, tanda
+    tanya berlebih, spasi/zero-width liar, atau karakter full-width. Semua ini
+    menurunkan kualitas hasil, terutama di Bing RSS. Normalisasi ini idempoten.
+    """
+    text = unicodedata.normalize("NFKC", query)
+    # Kontrol/zero-width diganti spasi (bukan dihapus) agar kata tidak menyatu.
+    text = _CTRL_RE.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = text.strip(_QUOTE_CHARS).strip()
+    text = re.sub(r"([!?.,;:])\1+", r"\1", text)
+    text = text.strip(" ,;:!?.")
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip()
+    return text
+
+
+def query_terms(query: str) -> list[str]:
+    """Term penting (tanpa stopword/token pendek) dari kueri ternormalisasi."""
+    return [
+        w
+        for w in _WORD_RE.findall(normalize_query(query).lower())
+        if len(w) > 2 and w not in _STOPWORDS
+    ]
+
+
+def relevance_score(result: "WebResult", query: str) -> float:
+    """Skor 0..1: fraksi term kueri yang muncul di judul/snippet hasil."""
+    terms = query_terms(query)
+    if not terms:
+        return 0.0
+    haystack = f"{result.title} {result.snippet}".lower()
+    return sum(1 for t in terms if t in haystack) / len(terms)
+
+
+def rank_by_relevance(results: list["WebResult"], query: str) -> list["WebResult"]:
+    """Stabil-sort hasil menurut relevansi ke kueri (urutan asli jadi tiebreak).
+
+    Membantu kueri Bahasa Indonesia: Bing kadang menaruh halaman generik di
+    atas hasil yang benar-benar memuat istilah kueri.
+    """
+    if len(results) < 2:
+        return results
+    order = sorted(
+        enumerate(results),
+        key=lambda pair: (-relevance_score(pair[1], query), pair[0]),
+    )
+    return [r for _, r in order]
 
 
 def parse_ddg_html(page: str, max_results: int) -> list[WebResult]:
@@ -151,11 +219,19 @@ class BingRssSearch:
     """
 
     def search(self, query: str, max_results: int) -> list[WebResult]:
+        s = get_settings()
+        params: dict[str, str] = {"q": query, "format": "rss"}
+        # Bias hasil ke market/bahasa (mis. id-ID) — kueri Bahasa Indonesia
+        # jauh lebih relevan daripada default en-US.
+        market = s.web_search_market.strip()
+        if market:
+            params["mkt"] = market
+            params["setlang"] = market.split("-")[0].lower()
         resp = httpx.get(
             "https://www.bing.com/search",
-            params={"q": query, "format": "rss"},
+            params=params,
             headers={"User-Agent": _USER_AGENT},
-            timeout=get_settings().web_search_timeout_seconds,
+            timeout=s.web_search_timeout_seconds,
             follow_redirects=True,
         )
         resp.raise_for_status()
@@ -275,8 +351,6 @@ def reset_rate_limit() -> None:
 
 # --- Sanitasi konten ----------------------------------------------------------
 
-_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u200b\u200c\u200d\ufeff]")
-
 
 def sanitize_text(text: str, max_chars: int = 1200) -> str:
     """Bersihkan teks web sebelum masuk prompt: kontrol/zero-width char,
@@ -337,6 +411,9 @@ def web_search(
     dibiarkan naik (pemanggil memutuskan degrade).
     """
     s = get_settings()
+    query = normalize_query(query)
+    if not query:
+        return []
     if not rate_limit_allow():
         raise RuntimeError("Web search rate limit terlampaui")
     provider = get_web_search_provider()
@@ -374,7 +451,7 @@ def web_search(
                 snippet=sanitize_text(r.snippet),
             )
         )
-    return results
+    return rank_by_relevance(results, query)
 
 
 def to_json(data: object) -> str:

@@ -78,6 +78,9 @@ class CoreSettings(BaseSettings):
     tavily_api_key: str | None = None
     web_search_timeout_seconds: float = 8.0
     web_search_max_results: int = 5
+    # Market/locale untuk Bing RSS (mkt + setlang) — membiaskan hasil ke
+    # bahasa/negara kueri, penting untuk kueri Bahasa Indonesia.
+    web_search_market: str = "id-ID"
     web_search_rate_limit_per_min: int = 10
     # CSV domain (kosong = semua diizinkan); denylist menang atas allowlist
     web_search_domain_allowlist_csv: str = ""
