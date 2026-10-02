@@ -1,0 +1,130 @@
+{
+  "name": "kb-retrieval-hard",
+  "version": 2,
+  "description": "Dataset headroom (Fase 1). Kueri berbentuk parafrase sehingga jarang memakai kata kunci dokumen target, didampingi dokumen distraktor pendek yang kaya kata umum (cuti, kerja, tarif, tahun, hari) untuk menekan peringkat target. TIDAK disambungkan ke quality gate CI — hanya untuk mengukur uplift reranker. Kueri dengan expected_filename=null harus dijawab no-answer.",
+  "documents": [
+    {
+      "filename": "transport-dinas.md",
+      "content": "# Transportasi Dinas\n\nSelama bertugas di luar kantor, karyawan memakai kendaraan operasional bila tersedia. Bila tidak ada, ojek daring atau taksi daring boleh dipakai dengan batas tarif 250 ribu rupiah untuk satu kali perjalanan, yang sudah mencakup tol dan parkir. Tarif yang melebihi batas harus mendapat persetujuan atasan sebelum berangkat. Klaim tarif diajukan ke sistem finance paling lambat 7 hari setelah tugas selesai. Struk elektronik dari aplikasi dianggap sah tanpa perlu dicetak.\n"
+    },
+    {
+      "filename": "ojek-online.md",
+      "content": "# Ojek Daring\n\nOjek daring hanya dipakai untuk perjalanan singkat di dalam kota. Tarif mengikuti aplikasi dan berlaku sama untuk seluruh karyawan."
+    },
+    {
+      "filename": "tiket-pesawat.md",
+      "content": "# Tiket Pesawat\n\nTiket pesawat untuk perjalanan dinas dipesan lewat biro perjalanan resmi. Tarif maksimal 3,5 juta rupiah per rute sekali jalan."
+    },
+    {
+      "filename": "uang-harian.md",
+      "content": "# Uang Harian Dinas\n\nUang harian dibayarkan lewat kasir sebelum keberangkatan, besarnya 150 ribu rupiah per hari untuk kota besar dan 100 ribu rupiah per hari untuk kota kecil. Porsi ini menutup biaya makan serta transportasi lokal selama tugas berlangsung sehingga tidak perlu dilaporkan dengan kuitansi. Uang harian yang belum terpakai wajib dikembalikan ke kasir pada hari kerja pertama setelah kembali.\n"
+    },
+    {
+      "filename": "tol-parkir.md",
+      "content": "# Tol dan Parkir\n\nReimbursement tol dan parkir selama tugas lapangan diajukan dengan bukti struk asli. Batas penggantian mengikuti tarif resmi yang tertera pada struk."
+    },
+    {
+      "filename": "cuti-tahunan.md",
+      "content": "# Cuti Tahunan\n\nSetiap karyawan tetap mendapat 12 hari kerja cuti tahunan untuk satu tahun kalender. Cuti diajukan lewat HRIS paling lambat 3 hari sebelum tanggal mulai, dan persetujuan diberikan oleh atasan langsung. Cuti yang tidak terpakai tidak dapat diakumulasi ke tahun berikutnya, kecuali ada perjanjian tertulis dengan divisi SDM. Cuti tahunan diambil per hari penuh, kecuali pengajuan paruh hari disetujui lebih dulu oleh atasan.\n"
+    },
+    {
+      "filename": "cuti-melahirkan.md",
+      "content": "# Cuti Melahirkan\n\nCuti melahirkan berlaku 3 bulan kalender dan dapat diambil sejak usia kehamilan memasuki bulan ketujuh. Selama cuti, karyawan tetap menerima gaji penuh dari perusahaan. Berkas berupa surat dokter dikirim ke divisi SDM paling lambat 1 minggu sebelum cuti dimulai."
+    },
+    {
+      "filename": "izin-pulang-awal.md",
+      "content": "# Izin Pulang Awal\n\nKaryawan boleh meninggalkan kantor lebih awal dari jam kerja resmi bila ada keperluan mendesak. Izin diajukan lewat HRIS pada hari yang sama dan disetujui atasan sebelum jam 15.00. Izin pulang awal maksimal 4 jam dalam satu bulan dan tidak mengurangi saldo cuti tahunan. Bila melebihi batas, kelebihannya dihitung sebagai potongan cuti.\n"
+    },
+    {
+      "filename": "izin-tertulis.md",
+      "content": "# Izin Tertulis\n\nIzin tertulis diberlakukan untuk ketidakhadiran sehari penuh. Formulir izin diisi, ditandatangani atasan, dan disimpan bagian SDM."
+    },
+    {
+      "filename": "cuti-bersama.md",
+      "content": "# Cuti Bersama\n\nCuti bersama ditetapkan perusahaan pada hari besar keagamaan nasional. Jumlah hari cuti bersama maksimal 4 hari dalam setahun dan diumumkan lewat pemberitahuan resmi."
+    },
+    {
+      "filename": "lembur-harian.md",
+      "content": "# Lembur\n\nLembur harian dibayarkan bersama gaji dan dilaporkan atasan sebelum akhir pekan."
+    },
+    {
+      "filename": "kata-sandi.md",
+      "content": "# Kata Sandi Akun\n\nKata sandi akun kerja wajib diganti setiap 90 hari dan tidak boleh dipakai ulang dari tiga kata sandi sebelumnya. Kata sandi minimal 12 karakter, memuat huruf besar, angka, dan simbol. Bila ada indikasi bocor, karyawan wajib menggantinya pada hari yang sama dan melapor ke tim keamanan. Sistem mengunci akun setelah 5 kali percobaan gagal, dan pembukaan kunci hanya bisa dilakukan oleh tim keamanan.\n"
+    },
+    {
+      "filename": "perangkat-usb.md",
+      "content": "# Perangkat Penyimpan Eksternal\n\nFlashdisk dan hard disk pribadi tidak boleh dipasang pada komputer kantor karena risiko penyebaran malware. Bila ada kebutuhan memindahkan berkas, karyawan memakai folder bersama terenkripsi yang disediakan tim IT. Penggunaan perangkat penyimpan eksternal tanpa izin keamanan termasuk pelanggaran dan dicatat dalam audit internal.\n"
+    },
+    {
+      "filename": "wifi-tamu.md",
+      "content": "# Wi-Fi Tamu\n\nJaringan nirkabel tamu terpisah dari jaringan internal dan hanya menyediakan akses internet. Kata sandi Wi-Fi tamu direset setiap hari dan berlaku selama jam kerja."
+    },
+    {
+      "filename": "vpn-malam.md",
+      "content": "# Akses Malam Jaringan\n\nAkses VPN di luar jam kantor memerlukan persetujuan keamanan. Sesi terbatas pada rentang waktu tertentu dan dicatat untuk audit."
+    },
+    {
+      "filename": "pencadangan-data.md",
+      "content": "# Pencadangan Data\n\nCadangan data server dilakukan otomatis setiap malam dan disimpan terpisah dari lokasi utama. Pemulihan berkas diuji sekali per kuartal oleh tim infrastruktur."
+    },
+    {
+      "filename": "jadwal-rapat.md",
+      "content": "# Jadwal Rapat\n\nRapat koordinasi mingguan tim diadakan setiap Senin pukul 09.00 di ruang rapat lantai 3, kecuali Senin libur nasional. Agenda dikirim paling lambat Jumat sebelumnya lewat kanal tim. Rapat triwulan dengan seluruh divisi diadakan awal bulan dan dihadiri kepala divisi masing-masing. Keterlambatan lebih dari 15 menit membuat rapat diganti ke jadwal lain pada hari yang sama.\n"
+    },
+    {
+      "filename": "katering-rapat.md",
+      "content": "# Konsumsi Rapat\n\nKonsumsi untuk rapat dibatasi 75 ribu rupiah per peserta per kali pertemuan, sudah termasuk kopi dan makanan ringan. Pesanan diajukan minimal 1 hari sebelum rapat lewat sistem pembelian. Konsumsi rapat yang melebihi batas harus mendapat persetujuan kepala divisi lebih dulu. Klaim konsumsi dilampirkan dengan nota pada laporan pengeluaran bulanan.\n"
+    },
+    {
+      "filename": "ruang-rapat.md",
+      "content": "# Ruang Rapat\n\nRuang rapat dipesan lewat kalender bersama dengan durasi maksimal 3 jam per sesi. Ruang yang tidak dipakai dalam 15 menit pertama otomatis dilepas."
+    },
+    {
+      "filename": "proyektor-rapat.md",
+      "content": "# Proyektor\n\nProyektor rapat dipinjam lewat tiket IT dan dikembalikan pada hari yang sama."
+    },
+    {
+      "filename": "notulen-rapat.md",
+      "content": "# Notulen Rapat\n\nNotulen rapat ditulis oleh peserta yang ditunjuk dan diunggah ke kanal tim paling lambat 1 hari setelah acara. Notulen memuat keputusan, penanggung jawab, dan tenggat."
+    },
+    {
+      "filename": "premi-kesehatan.md",
+      "content": "# Jaminan Kesehatan Karyawan\n\nPerusahaan menanggung premi jaminan kesehatan karyawan sebesar 100 persen dan keluarga inti sebesar 50 persen dari total premi bulanan. Tanggungan berlaku untuk pasangan serta maksimal dua anak yang berusia di bawah 21 tahun. Pendaftaran peserta baru diajukan ke bagian SDM pada bulan berjalan dengan masa tunggu 30 hari sebelum berlaku. Perubahan data tanggungan wajib diperbarui paling lambat 14 hari setelah pernikahan atau kelahiran anak.\n"
+    },
+    {
+      "filename": "premi-tambahan.md",
+      "content": "# Paket Premi Tambahan\n\nPaket premi tambahan tersedia untuk keluarga besar dengan biaya bulanan berbeda. Pendaftaran dibuka dua kali dalam setahun."
+    },
+    {
+      "filename": "klaim-obat.md",
+      "content": "# Penggantian Biaya Obat\n\nPenggantian biaya obat atas resep dokter diajukan lewat sistem kesehatan dengan melampirkan nota asli dan salinan resep. Batas penggantian adalah 500 ribu rupiah per bulan dan dibayarkan pada siklus gaji berikutnya. Obat tanpa resep dokter tidak masuk dalam penggantian kecuali dalam keadaan darurat yang disertai surat keterangan dokter.\n"
+    },
+    {
+      "filename": "obat-generik.md",
+      "content": "# Obat Generik\n\nObat generik tersedia di klinik kantor dan diberikan mengikuti anjuran dokter jaga."
+    },
+    {
+      "filename": "konsultasi-dokter.md",
+      "content": "# Konsultasi Dokter\n\nLayanan konsultasi dokter umum tersedia setiap Rabu pukul 10.00 di klinik kantor. Pendaftaran dilakukan lewat resepsionis klinik tanpa biaya tambahan bagi karyawan."
+    },
+    {
+      "filename": "asuransi-jiwa.md",
+      "content": "# Asuransi Jiwa\n\nAsuransi jiwa dasar mencakup santunan kematian akibat kecelakaan kerja. Besaran santunan mengikuti perhitungan pihak penyedia asuransi dan dikirim ke penerima manfaat."
+    }
+  ],
+  "queries": [
+    { "question": "berapa uang untuk kendaraan saat tugas di luar kantor", "expected_filename": "transport-dinas.md" },
+    { "question": "berapa dana yang dibawa ketika bekerja di luar kota tiap hari", "expected_filename": "uang-harian.md" },
+    { "question": "libur tahunan karyawan boleh diambil sebanyak apa dan sampai kapan", "expected_filename": "cuti-tahunan.md" },
+    { "question": "bolehkah pulang lebih awal dari jam kerja dan bagaimana cara memintanya", "expected_filename": "izin-pulang-awal.md" },
+    { "question": "seberapa sering pengguna harus mengganti password akun kerja", "expected_filename": "kata-sandi.md" },
+    { "question": "apakah flashdisk pribadi boleh dipakai di komputer kantor", "expected_filename": "perangkat-usb.md" },
+    { "question": "kapan rapat koordinasi mingguan tim diadakan", "expected_filename": "jadwal-rapat.md" },
+    { "question": "berapa maksimal biaya makan ketika ada pertemuan", "expected_filename": "katering-rapat.md" },
+    { "question": "berapa porsi biaya kesehatan yang ditanggung kantor bagi karyawan", "expected_filename": "premi-kesehatan.md" },
+    { "question": "bagaimana cara mengajukan balik biaya beli obat", "expected_filename": "klaim-obat.md" },
+    { "question": "siapa presiden yang terpilih pada pemilu terakhir", "expected_filename": null },
+    { "question": "siapa penemu lampu pijar", "expected_filename": null },
+    { "question": "siapa penulis novel laskar pelangi", "expected_filename": null }
+  ]
+}

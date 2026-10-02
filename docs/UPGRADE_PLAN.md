@@ -81,6 +81,49 @@ Konsekuensi: sebelum Fase 1 diklaim berhasil, perlu dataset **headroom** terpisa
 jawaban salah) dan kueri parafrase yang sengaja tidak memakai kata kunci dokumen target.
 Dataset itu **tidak** disambungkan ke quality gate CI, hanya untuk mengukur uplift.
 
+### Baseline dataset headroom (langkah pertama Fase 1 — selesai)
+
+Dataset [`docs/eval/retrieval_dataset_hard.json`](eval/retrieval_dataset_hard.json)
+(`kb-retrieval-hard` v2): **27 dokumen, 13 kueri** (10 berjawaban + 3 tanpa jawaban)
+dalam 5 klaster topikal, tiap klaster berisi dokumen target panjang ditambah distraktor
+pendek yang kaya kata umum.
+
+| Metrik | Nilai | Ruang naik |
+| --- | --- | --- |
+| recall@5 | 0.9 | → 1.0 |
+| MRR | 0.8 | → 1.0 |
+| citation_correctness | 0.7 | → 1.0 |
+| no_answer_accuracy | 1.0 | — |
+| hallucination_rate | 0.0 | — |
+| false_no_answer_rate | 0.0 | — |
+| latency p50 / p95 | 0.0211 s / 0.0287 s | — |
+
+Kueri yang belum optimal:
+
+| Kueri | Posisi target |
+| --- | --- |
+| berapa maksimal biaya makan ketika ada pertemuan | di luar top-5 |
+| berapa porsi biaya kesehatan yang ditanggung kantor bagi karyawan | 2 |
+| berapa dana yang dibawa ketika bekerja di luar kota tiap hari | 2 |
+
+**Catatan atribusi:** ketiga kueri itu berbentuk parafrase, sehingga perbaikinya menuntut
+sinyal semantik, bukan sekadar kecocokan kata. Kueri lain sudah rank 1 dan tidak memberi
+ruang. Saat Fase 1 berjalan, laporkan delta **per kueri**: bila reranker leksikal tidak
+menyentuh ketiga kueri parafrase itu, itu temuan yang valid — artinya dibutuhkan reranker
+semantik atau embedding lebih baik, bukan kegagalan rerankernya.
+
+Perbaikan harness pada langkah ini:
+
+- `scripts/eval_rag.py --verbose` mencetak peringkat kandidat dan posisi dokumen harapan,
+  sehingga posisi (bukan cuma skor) terlihat.
+- Kolom `Posisi` ditambahkan ke tabel laporan markdown.
+- **Workspace khusus per dataset** (`eval-<nama-dataset>`): sebelumnya kedua dataset
+  berbagi satu workspace, sehingga `cuti-tahunan.md` milik dataset hard tersingkir oleh
+  milik dataset mini dan distraktor asing ikut tercampur. Korpus kini reproducible.
+- Kueri `expected_filename=null` dibuat tanpa tumpang tindih token dengan dokumen mana
+  pun (diverifikasi otomatis): stub LLM menjawab begitu ada token sama, jadi tabrakan
+  insidental akan merusak metrik no-answer tanpa kaitan dengan retrieval.
+
 Perintah A/B sekarang:
 
 ```bash
@@ -113,8 +156,12 @@ File: baru `core/src/ai_asistent_core/rerank.py`; ubah
 [retrieval.py](core/src/ai_asistent_core/retrieval.py),
 [config.py](core/src/ai_asistent_core/config.py), [rag.py](core/src/ai_asistent_core/rag.py).
 
-Prasyarat (hasil temuan Fase 0): buat `docs/eval/retrieval_dataset_hard.json` dan catat
-baseline-nya lebih dulu, karena dataset gate sudah jenuh 1.0 dan tidak punya headroom.
+Prasyarat (hasil temuan Fase 0): **selesai** — dataset headroom dan baseline-nya sudah ada
+di atas, jadi uplift bisa diukur. Jalankan ulang dengan:
+
+```bash
+make eval ARGS='--dataset docs/eval/retrieval_dataset_hard.json --verbose'
+```
 
 Test & eval: unit test reranker (deterministik, batas top_n, tanpa regression urutan saat
 skor sama) + jalankan `test_retrieval_eval.py` (jaring regresi) dan bandingkan recall@5/MRR

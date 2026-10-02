@@ -45,6 +45,11 @@ def main() -> int:
     parser.add_argument("--write", action="store_true", help="tulis laporan markdown")
     parser.add_argument("--price-per-1k", type=float, default=0.00015, help="USD per 1K token")
     parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="cetak peringkat kandidat & posisi dokumen harapan per kueri",
+    )
+    parser.add_argument(
         "--set",
         action="append",
         default=[],
@@ -103,13 +108,20 @@ def main() -> int:
         r = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     headers = {"Authorization": f"Bearer {r.json()['token']}"}
 
-    ws_id = None
-    for w in client.get("/api/v1/workspaces", headers=headers).json():
-        ws_id = w["id"]
-        break
+    # Workspace khusus per dataset agar korpus reproducible dan tidak saling
+    # menyilang antar dataset (nama berkas sama bisa menyebabkan salah satu
+    # dokumen tersingkir saat seeding).
+    ws_slug = f"eval-{dataset.name}"
+    ws_id = next(
+        (w["id"] for w in client.get("/api/v1/workspaces", headers=headers).json()
+         if w.get("slug") == ws_slug),
+        None,
+    )
     if ws_id is None:
         ws_id = client.post(
-            "/api/v1/workspaces", headers=headers, json={"name": "Eval", "slug": "eval-ws"}
+            "/api/v1/workspaces",
+            headers=headers,
+            json={"name": f"Eval {dataset.name}", "slug": ws_slug},
         ).json()["id"]
 
     # Seed dokumen (idempoten: 409 dedup → pakai file yang sudah ada)
@@ -189,6 +201,15 @@ def main() -> int:
         for m in misses:
             print(f"  - {m['question']} (harap: {m['expected']}, dapat: {m['top_citation']})")
 
+    if args.verbose:
+        print("\n== Peringkat per kueri ==")
+        for row in per_query:
+            ranked = row["ranked"]
+            exp = row["expected"]
+            pos = ranked.index(exp) + 1 if exp and exp in ranked else None
+            where = f"posisi {pos}" if pos else "TIDAK ADA di top-k"
+            print(f"  - {row['question']}\n      harap {exp or '—'} ({where}) | {', '.join(ranked)}")
+
     if args.write:
         reports = REPO / "docs/reports"
         reports.mkdir(parents=True, exist_ok=True)
@@ -211,11 +232,21 @@ def main() -> int:
             f"| {k} | {v if isinstance(v, int) else round(float(v), 4)} |"
             for k, v in metrics.items()
         ]
-        lines += ["", "## Detail per kueri", "", "| Kueri | Harapan | Kind | Sitasi teratas |", "| --- | --- | --- | --- |"]
         lines += [
-            f"| {q['question']} | {q['expected'] or '—'} | {q['kind']} | {q['top_citation'] or '—'} |"
-            for q in per_query
+            "",
+            "## Detail per kueri",
+            "",
+            "| Kueri | Harapan | Posisi | Kind | Sitasi teratas |",
+            "| --- | --- | --- | --- | --- |",
         ]
+        for q in per_query:
+            ranked = q["ranked"]
+            exp = q["expected"]
+            pos = ranked.index(exp) + 1 if exp and exp in ranked else None
+            lines.append(
+                f"| {q['question']} | {exp or '—'} | {pos or '—'} | {q['kind']} | "
+                f"{q['top_citation'] or '—'} |"
+            )
         out.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"\nLaporan ditulis: {out.relative_to(REPO)}")
 
