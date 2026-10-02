@@ -43,6 +43,7 @@ Cek cepat: buka http://localhost:3000 (landing) → **Masuk/Daftar** di http://l
 ## Quality gates
 
 ```bash
+make doctor        # diagnosa environment: Docker, port infra, .env, DB/Redis/MinIO
 make migrate       # jalankan migrasi Alembic ke DB development
 make test-db       # (sekali) buat + migrasi database test
 make lint          # ruff (core, backend & worker)

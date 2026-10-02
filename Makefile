@@ -1,9 +1,10 @@
-.PHONY: help infra infra-down install api worker web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench reembed
+.PHONY: help infra infra-down doctor install api worker web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench reembed
 
 help:
 	@echo "AI Knowledge Assistant — perintah utama:"
 	@echo "  make infra         Jalankan Postgres+Redis+MinIO (docker compose up -d --wait)"
 	@echo "  make infra-down    Hentikan infra"
+	@echo "  make doctor        Diagnosa environment (Docker, port infra, .env, DB/Redis/MinIO)"
 	@echo "  make install       Install semua workspace (uv sync di root) + npm install"
 	@echo "  make api           Jalankan backend API di :8000 (reload)"
 	@echo "  make worker        Jalankan RQ worker (queue: default)"
@@ -30,6 +31,9 @@ infra:
 
 infra-down:
 	docker compose down
+
+doctor:
+	./scripts/doctor.sh
 
 install:
 	uv sync
