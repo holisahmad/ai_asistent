@@ -79,6 +79,23 @@ class CoreSettings(BaseSettings):
     openai_timeout_seconds: float = 60.0
     rag_max_context_chars: int = 6000
 
+    # Fase 2 upgrade: mode jawaban ekstraktif vs generatif.
+    # answer_mode: "generative" (default lama) | "extractive" | "auto"
+    #   - generative  : selalu pakai LLM untuk merangkum konteks (perilaku lama).
+    #   - extractive  : bila kepercayaan leksikal cukup, kembalikan cuplikan
+    #                   terbaik tanpa memanggil LLM (hemat token & latensi).
+    #   - auto        : ekstraktif dulu; bila skor < answer_extractive_threshold
+    #                   atau margin antar-kandidat < answer_min_margin, jatuh
+    #                   ke generatif.
+    answer_mode: str = "generative"
+    # Ambang skor LexicalConfidence minimum agar mode ekstraktif aktif.
+    answer_extractive_threshold: float = 0.55
+    # Margin minimum antara skor chunk terbaik dan kedua terbaik; margin kecil
+    # berarti dua dokumen sama-sama relevan → generatif lebih aman.
+    answer_min_margin: float = 0.10
+    # Panjang maksimum cuplikan ekstraktif (karakter); 0 = tidak dipotong.
+    answer_max_chars: int = 600
+
     # Fase 7: web fallback
     web_fallback_mode: str = "internal_only"  # internal_only | internal_plus_web
     web_search_provider: str = "none"  # none | bing_rss | duckduckgo | searx | tavily

@@ -21,6 +21,7 @@ from ai_asistent_core.config import get_settings
 from ai_asistent_core.injection import harden_context
 from ai_asistent_core.llm import NO_ANSWER, LLMProvider, _is_no_answer, get_llm_provider
 from ai_asistent_core.models import WebSearchLog
+from ai_asistent_core.rerank import LexicalConfidence, lexical_confidence
 from ai_asistent_core.retrieval import RetrievedChunk, retrieve
 from ai_asistent_core.websearch import (
     WebResult,
@@ -233,6 +234,71 @@ def _no_answer(web_fallback: dict[str, object] | None = None) -> RagAnswer:
     )
 
 
+def _extractive_answer(
+    question: str,
+    selected: list[RetrievedChunk],
+) -> RagAnswer | None:
+    """Coba kembalikan jawaban ekstraktif tanpa memanggil LLM.
+
+    Alur:
+    1. Hitung LexicalConfidence IDF-weighted untuk chunk teratas.
+    2. Periksa ambang skor dan margin antar-kandidat.
+    3. Bila lolos, kembalikan cuplikan chunk terbaik sebagai jawaban.
+    4. Bila gagal salah satu syarat, kembalikan None → pemanggil jatuh ke generatif.
+
+    Hasilnya bisa dibedakan dari jawaban generatif via ``answer_kind="extractive"``.
+    """
+    if not selected:
+        return None
+    s = get_settings()
+
+    conf: LexicalConfidence = lexical_confidence(question, selected, target_idx=0)
+    if conf.score < s.answer_extractive_threshold:
+        logger.debug(
+            "extractive: skor=%.3f < threshold=%.3f → jatuh ke generatif",
+            conf.score,
+            s.answer_extractive_threshold,
+        )
+        return None
+
+    # Periksa margin: selisih skor chunk #1 vs #2 harus cukup besar.
+    if len(selected) >= 2:
+        conf2 = lexical_confidence(question, selected, target_idx=1)
+        margin = conf.score - conf2.score
+        if margin < s.answer_min_margin:
+            logger.debug(
+                "extractive: margin=%.3f < min_margin=%.3f → jatuh ke generatif",
+                margin,
+                s.answer_min_margin,
+            )
+            return None
+
+    best = selected[0]
+    text = best.content.strip().replace("\n", " ")
+    max_chars = s.answer_max_chars
+    if max_chars > 0 and len(text) > max_chars:
+        text = text[:max_chars].rstrip() + "…"
+
+    logger.debug(
+        "extractive: skor=%.3f, term=%s/%s → kembalikan cuplikan (len=%d)",
+        conf.score,
+        conf.matched_terms,
+        conf.total_terms,
+        len(text),
+    )
+    return RagAnswer(
+        text=text,
+        answer_kind="extractive",
+        citations=[_citations(selected[:1])[0]],
+        used_chunk_ids=[best.chunk_id],
+    )
+
+
+def _use_extractive(mode: str) -> bool:
+    """True bila mode saat ini mengizinkan jalur ekstraktif dicoba."""
+    return mode in ("extractive", "auto")
+
+
 def answer_question(
     db: Session,
     workspace_id: str,
@@ -241,8 +307,16 @@ def answer_question(
     provider: LLMProvider | None = None,
     allow_web: bool = False,
 ) -> RagAnswer:
-    """Pipeline penuh: hybrid retrieval → LLM grounded → sitasi/no-answer/web."""
+    """Pipeline penuh: hybrid retrieval → (ekstraktif | LLM grounded) → sitasi/no-answer/web.
+
+    Mode jawaban diatur oleh ``answer_mode`` di settings:
+    - ``generative`` (default): selalu pakai LLM.
+    - ``extractive``: kembalikan cuplikan chunk terbaik tanpa LLM bila skor
+      leksikal cukup; bila tidak cukup → no_answer (tanpa fallback ke LLM).
+    - ``auto``: ekstraktif dulu; bila tidak lolos syarat → jatuh ke generatif.
+    """
     llm: LLMProvider = provider if provider is not None else get_llm_provider()
+    s = get_settings()
 
     chunks = retrieve(db, workspace_id, question)
     if not chunks:
@@ -253,6 +327,22 @@ def answer_question(
         return _no_answer()
 
     selected = _select_contexts(chunks)
+    mode = s.answer_mode
+
+    # Jalur ekstraktif: tanpa panggil LLM bila skor leksikal mencukupi.
+    if _use_extractive(mode):
+        ext = _extractive_answer(question, selected)
+        if ext is not None:
+            return ext
+        # mode="extractive" (keras): tidak jatuh ke LLM.
+        if mode == "extractive":
+            if _web_allowed(allow_web):
+                web = _attempt_web_fallback(db, workspace_id, question, llm)
+                if web is not None:
+                    return web
+            return _no_answer()
+
+    # Jalur generatif (mode="generative" atau "auto" gagal ekstraktif).
     result = llm.generate(question, _context_texts(selected))
     text = result.text.strip()
     if not result.no_answer and text and text != NO_ANSWER:
@@ -295,8 +385,14 @@ def answer_stream(
     provider: LLMProvider | None = None,
     allow_web: bool = False,
 ) -> _AnswerStream:
-    """Versi streaming: iterasi untuk delta, `final()` setelah habis."""
+    """Versi streaming: iterasi untuk delta, `final()` setelah habis.
+
+    Mode ``extractive`` dan ``auto`` di-support: bila jalur ekstraktif lolos,
+    teks cuplikan langsung di-yield sekaligus (tidak ada delta parsial) dan
+    LLM tidak dipanggil sama sekali.
+    """
     llm: LLMProvider = provider if provider is not None else get_llm_provider()
+    s = get_settings()
 
     deltas: list[str] = []
     finals: list[RagAnswer] = []
@@ -304,9 +400,28 @@ def answer_stream(
     def generate() -> "Iterator[str]":
         chunks = retrieve(db, workspace_id, question)
         selected = _select_contexts(chunks)
+        mode = s.answer_mode
+
+        # Jalur ekstraktif: hindari panggil LLM bila skor leksikal mencukupi.
+        if selected and _use_extractive(mode):
+            ext = _extractive_answer(question, selected)
+            if ext is not None:
+                finals.append(ext)
+                yield ext.text
+                return
+            # mode="extractive" (keras): tidak lanjut ke LLM.
+            if mode == "extractive":
+                if _web_allowed(allow_web):
+                    web = _attempt_web_fallback(db, workspace_id, question, llm)
+                    if web is not None:
+                        finals.append(web)
+                        yield web.text
+                        return
+                finals.append(_no_answer({"attempted": _web_allowed(allow_web)}))
+                return
+
+        # Jalur generatif (termasuk "auto" bila ekstraktif gagal).
         if selected:
-            # Tahan keluaran awal selama masih mungkin sentinel NO_ANSWER agar
-            # sentinel tidak sempat terlihat di UI klien.
             held = ""
             try:
                 for delta in llm.stream_generate(question, _context_texts(selected)):

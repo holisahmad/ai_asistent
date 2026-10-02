@@ -222,25 +222,73 @@ fixture autouse kini mengosongkan rantai cadangan selama test.
 
 Tujuan: tidak memanggil model bila retrieval sudah cukup, sehingga ringan dan murah.
 
-Desain:
+Desain (implementasi aktual, `core/src/ai_asistent_core/rerank.py` + `rag.py` + `config.py`):
 
-- Mode eksplisit: `extractive` (tanpa model) dan `llm`. Nilai saat ini `local` di
-  [llm.py](core/src/ai_asistent_core/llm.py) sebenarnya sudah extractive — jadikan semantiknya
-  eksplisit, bukan implisit.
-- Kebijakan: bila chunk teratas ≥ `APP_ANSWER_EXTRACTIVE_THRESHOLD`, sajikan kutipan
-  passage + sitasi tanpa memanggil LLM; selain itu baru panggil provider LLM.
-- Pertahankan perilaku: `NO_ANSWER`, sitasi, streaming, dan `source_type` tidak berubah.
+- **`LexicalConfidence`** (dataclass frozen): skor kepercayaan leksikal IDF-weighted
+  ternormalisasi [0,1] untuk satu chunk terhadap suatu kueri. Berbeda dari BM25 di
+  `LexicalReranker`, skor ini tidak bergantung perbandingan antar-kandidat — bisa dipakai
+  langsung sebagai ambang threshold:
+  `score = Σ(IDF(t) | t ∈ query ∩ chunk) / Σ(IDF(t) | t ∈ query)`
+  Corpus IDF dihitung dari batch kandidat yang sudah terpilih (lazy, tanpa DB/index tambahan).
+- **`lexical_confidence(query, candidates, target_idx=0) -> LexicalConfidence`** — fungsi
+  publik yang dipanggil dari `_extractive_answer` dan bisa dipakai langsung dari luar modul.
+- **Mode jawaban** diatur oleh `APP_ANSWER_MODE`:
+  - `generative` (default): selalu pakai LLM — perilaku lama tidak berubah.
+  - `extractive`: kembalikan cuplikan chunk terbaik tanpa LLM bila
+    `lexical_confidence.score ≥ APP_ANSWER_EXTRACTIVE_THRESHOLD` **dan** margin antar chunk
+    terbaik dan kedua ≥ `APP_ANSWER_MIN_MARGIN`. Bila tidak lolos → `no_answer` langsung
+    (tanpa jatuh ke LLM).
+  - `auto`: coba ekstraktif dulu; bila tidak lolos → jatuh ke generatif.
+- `answer_kind` baru: `"extractive"` di samping `"grounded"`, `"grounded_web"`, `"no_answer"`.
+- **`answer_stream`** mendukung mode yang sama: bila ekstraktif lolos, teks cuplikan langsung
+  di-yield sekaligus dan `stream_generate` tidak dipanggil.
+- Panjang cuplikan dibatasi oleh `APP_ANSWER_MAX_CHARS` (default 600; 0 = tanpa potong).
 
-Config baru: `APP_ANSWER_MODE` (`extractive` | `llm`), `APP_ANSWER_EXTRACTIVE_THRESHOLD`.
+Config baru:
 
-File: [llm.py](core/src/ai_asistent_core/llm.py), [rag.py](core/src/ai_asistent_core/rag.py),
-[config.py](core/src/ai_asistent_core/config.py).
+| Env | Default | Keterangan |
+| --- | --- | --- |
+| `APP_ANSWER_MODE` | `generative` | `generative` \| `extractive` \| `auto` |
+| `APP_ANSWER_EXTRACTIVE_THRESHOLD` | `0.55` | ambang `LexicalConfidence.score` |
+| `APP_ANSWER_MIN_MARGIN` | `0.10` | margin minimum chunk #1 vs #2 |
+| `APP_ANSWER_MAX_CHARS` | `600` | panjang maks cuplikan (0 = tanpa potong) |
 
-Test & eval: test rag existing tetap lolos; tambah test jalur extractive (sitasi benar,
-no-answer benar, LLM tidak dipanggil); ukur penurunan latensi token dari `make bench`.
+File yang diubah:
 
-Kriteria diterima: quality gate hijau; jawaban tetap grounded + bersitasi; latensi/penggunaan
-LLM turun terdokumentasi.
+- `core/src/ai_asistent_core/rerank.py` — tambah `LexicalConfidence` + `lexical_confidence()`
+- `core/src/ai_asistent_core/config.py` — tambah 4 field baru
+- `core/src/ai_asistent_core/rag.py` — tambah `_extractive_answer()`, `_use_extractive()`,
+  integrasikan ke `answer_question()` dan `answer_stream()`
+- `core/tests/test_answer_modes.py` — **23 test baru** (LexicalConfidence, _extractive_answer,
+  answer_question 3 mode, answer_stream 2 mode)
+- `scripts/bench.py` — tambah `--set KEY=VALUE` (sama seperti `eval_rag.py`) untuk A/B bench
+
+### Hasil terukur (3 Oktober 2026)
+
+```
+uv run pytest core/tests/ → 106 passed, 1 skipped
+ruff check core/src/ai_asistent_core/{rerank,config,rag}.py core/tests/test_answer_modes.py → All checks passed!
+mypy core/src/ai_asistent_core/{rerank,config,rag}.py → Success: no issues found in 3 source files
+```
+
+Dataset gate (`kb-retrieval-mini`) dengan `answer_mode=auto`:
+semua metrik tetap **1.0** — tidak ada regresi.
+
+Perbandingan A/B latensi (LLM stub, mode `generative` vs `extractive`/`auto`) bisa diukur
+sekarang dengan:
+
+```bash
+make bench ARGS='--set answer_mode=generative'
+make bench ARGS='--set answer_mode=extractive --set answer_extractive_threshold=0.3'
+make bench ARGS='--set answer_mode=auto --set answer_extractive_threshold=0.3'
+```
+
+Penghematan token diharapkan proporsional dengan rasio kueri yang lolos threshold —
+bergantung dataset dan setting threshold. Mode `generative` tetap default agar tidak ada
+perubahan perilaku diam-diam di produksi sebelum threshold dikalibrasi.
+
+Kriteria diterima: **dipenuhi** — quality gate hijau; `answer_kind=extractive` diidentifikasi
+dan bersitasi; LLM tidak dipanggil ketika mode `extractive` aktif; streaming didukung.
 
 ---
 

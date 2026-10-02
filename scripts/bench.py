@@ -40,10 +40,30 @@ def main() -> int:
     parser.add_argument("--llm", choices=["stub", "gateway"], default="stub")
     parser.add_argument("--price-per-1k", type=float, default=0.00015)
     parser.add_argument("--dataset", default=str(REPO / "docs/eval/retrieval_dataset.json"))
+    parser.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "override setting untuk perbandingan A/B, boleh berulang "
+            "(mis. --set reranker_enabled=false --set answer_mode=extractive)"
+        ),
+    )
     args = parser.parse_args()
 
     if args.llm == "stub":
         os.environ["APP_LLM_PROVIDER"] = "local"
+
+    # Override settings via env vars — diterapkan setelah --llm agar --set menang.
+    overrides: dict[str, str] = {}
+    for item in args.set:
+        if "=" not in item:
+            parser.error(f"--set harus berformat KEY=VALUE, diterima: {item!r}")
+        key, value = item.split("=", 1)
+        env_key = key if key.startswith("APP_") else f"APP_{key.upper()}"
+        os.environ[env_key] = value
+        overrides[env_key] = value
 
     import app.api.routes.files as files_route
 
@@ -80,6 +100,7 @@ def main() -> int:
         f["filename"]
         for f in client.get(f"/api/v1/workspaces/{ws_id}/files", headers=headers).json()
     }
+    seeded = 0
     for doc in dataset.documents:
         if doc.filename in existing:
             continue
@@ -88,6 +109,12 @@ def main() -> int:
             headers=headers,
             files={"file": (doc.filename, BytesIO(doc.content.encode()), "text/markdown")},
         )
+
+    suffix = f", override={overrides}" if overrides else ""
+    print(
+        f"Benchmark — LLM={args.llm}, iterasi={args.iterations}, "
+        f"kueri unik={len([q for q in dataset.queries if q.expected_filename])}{suffix}"
+    )
 
     questions = [q.question for q in dataset.queries if q.expected_filename]
 
@@ -122,6 +149,8 @@ def main() -> int:
     width = 62
     print("=" * width)
     print(f"Benchmark RAG — LLM={args.llm}, iterasi={args.iterations}, kueri unik={len(questions)}")
+    if overrides:
+        print(f"Override: {overrides}")
     print("=" * width)
     print(f"{'tahap':<12} {'p50 (ms)':>10} {'p95 (ms)':>10} {'p99 (ms)':>10} {'mean (ms)':>11}")
     for label, values in (("retrieval", retrieval_times), ("chat+LLM", chat_times)):

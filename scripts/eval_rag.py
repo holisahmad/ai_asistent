@@ -171,6 +171,7 @@ def main() -> int:
                     "kind": answer.answer_kind,
                     "top_citation": top_citations[-1],
                     "ranked": ranked_filenames[-1][: args.k],
+                    "top_score": round(hits[0].score, 4) if hits else None,
                     "seconds": round(elapsed, 3),
                 }
             )
@@ -208,7 +209,10 @@ def main() -> int:
             exp = row["expected"]
             pos = ranked.index(exp) + 1 if exp and exp in ranked else None
             where = f"posisi {pos}" if pos else "TIDAK ADA di top-k"
-            print(f"  - {row['question']}\n      harap {exp or '—'} ({where}) | {', '.join(ranked)}")
+            print(
+                f"  - {row['question']}\n      harap {exp or '—'} ({where}) "
+                f"| skor={row['top_score']} | {', '.join(ranked)}"
+            )
 
     if args.write:
         reports = REPO / "docs/reports"
@@ -236,16 +240,16 @@ def main() -> int:
             "",
             "## Detail per kueri",
             "",
-            "| Kueri | Harapan | Posisi | Kind | Sitasi teratas |",
-            "| --- | --- | --- | --- | --- |",
+            "| Kueri | Harapan | Posisi | Skor | Kind | Sitasi teratas |",
+            "| --- | --- | --- | --- | --- | --- |",
         ]
         for q in per_query:
             ranked = q["ranked"]
             exp = q["expected"]
             pos = ranked.index(exp) + 1 if exp and exp in ranked else None
             lines.append(
-                f"| {q['question']} | {exp or '—'} | {pos or '—'} | {q['kind']} | "
-                f"{q['top_citation'] or '—'} |"
+                f"| {q['question']} | {exp or '—'} | {pos or '—'} | {q['top_score']} | "
+                f"{q['kind']} | {q['top_citation'] or '—'} |"
             )
         out.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"\nLaporan ditulis: {out.relative_to(REPO)}")
