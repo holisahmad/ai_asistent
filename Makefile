@@ -5,6 +5,7 @@ help:
 	@echo "  make infra         Jalankan Postgres+Redis+MinIO (docker compose up -d --wait)"
 	@echo "  make infra-down    Hentikan infra"
 	@echo "  make doctor        Diagnosa environment (Docker, port infra, .env, DB/Redis/MinIO)"
+	@echo "  make doctor ARGS=--fix   Perbaiki otomatis, tunggu hijau, lalu diagnosa ulang"
 	@echo "  make install       Install semua workspace (uv sync di root) + npm install"
 	@echo "  make api           Jalankan backend API di :8000 (reload)"
 	@echo "  make worker        Jalankan RQ worker (queue: default)"
@@ -33,7 +34,7 @@ infra-down:
 	docker compose down
 
 doctor:
-	./scripts/doctor.sh
+	./scripts/doctor.sh $(ARGS)
 
 install:
 	uv sync

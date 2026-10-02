@@ -92,7 +92,7 @@ make restore DIR=backups/<timestamp> [DB=nama_database]
 
 | Gejala | Kemungkinan penyebab | Tindakan |
 | --- | --- | --- |
-| Setup lokal tidak jalan (infra/env) | Docker mati, port terpakai, `.env` hilang/salah, layanan belum siap | Jalankan `make doctor` — mencetak item merah + langkah perbaikan; lalu ulangi. |
+| Setup lokal tidak jalan (infra/env) | Docker mati, port terpakai, `.env` hilang/salah, layanan belum siap | Jalankan `make doctor` — mencetak item merah + langkah perbaikan. Untuk perbaikan otomatis (nyalakan Docker, `docker compose up -d --wait`, salin `.env`): `make doctor ARGS=--fix`. |
 | `/health/ready` 503 | DB/Redis/MinIO turun | Cek container/instance; pulihkan ketergantungan; API tetap liveness OK. |
 | Chat lambat / timeout | Provider LLM lambat / breaker terbuka | Cek metrik breaker & error log; kurangi `APP_RETRIEVAL_TOP_K`; fallback provider. |
 | 429 massal | Rate limit terlalu ketat / klien loop | Naikkan `APP_API_RATE_LIMIT_PER_MIN` atau perbaiki klien; cek `Retry-After`. |

@@ -44,6 +44,7 @@ Cek cepat: buka http://localhost:3000 (landing) → **Masuk/Daftar** di http://l
 
 ```bash
 make doctor        # diagnosa environment: Docker, port infra, .env, DB/Redis/MinIO
+make doctor ARGS=--fix  # perbaiki otomatis (Docker/infra/.env), tunggu hijau, diagnosa ulang
 make migrate       # jalankan migrasi Alembic ke DB development
 make test-db       # (sekali) buat + migrasi database test
 make lint          # ruff (core, backend & worker)
