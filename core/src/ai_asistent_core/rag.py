@@ -235,6 +235,34 @@ def _no_answer(web_fallback: dict[str, object] | None = None) -> RagAnswer:
     )
 
 
+def _retrieval_fallback(selected: list[RetrievedChunk]) -> RagAnswer:
+    """Jawaban fallback murni retrieval — dipakai saat LLM gagal/mati.
+
+    Kembalikan cuplikan dari semua chunk terpilih (bukan hanya yang pertama)
+    agar pengguna tetap dapat informasi berguna dari knowledge base meskipun
+    LLM tidak tersedia. Teks diformat sebagai daftar bernomor sehingga mudah
+    dibaca dan sitasi tetap akurat.
+    """
+    parts: list[str] = []
+    for i, c in enumerate(selected):
+        snippet = c.content.strip().replace("\n", " ")
+        if len(snippet) > 800:
+            snippet = snippet[:800].rstrip() + "…"
+        parts.append(f"[{i + 1}] {snippet}")
+
+    text = "\n\n".join(parts)
+    logger.info(
+        "LLM tidak tersedia — mengembalikan %d cuplikan retrieval langsung",
+        len(selected),
+    )
+    return RagAnswer(
+        text=text,
+        answer_kind="extractive",
+        citations=_citations(selected),
+        used_chunk_ids=[c.chunk_id for c in selected],
+    )
+
+
 def _extractive_answer(
     question: str,
     selected: list[RetrievedChunk],
@@ -344,8 +372,16 @@ def answer_question(
             return _no_answer()
 
     # Jalur generatif (mode="generative" atau "auto" gagal ekstraktif).
-    result = llm.generate(question, _context_texts(selected))
-    text = result.text.strip()
+    try:
+        result = llm.generate(question, _context_texts(selected))
+        text = result.text.strip()
+    except Exception as exc:  # noqa: BLE001 - LLM mati → fallback ke retrieval
+        logger.warning(
+            "LLM gagal (%s: %s) — fallback ke retrieval langsung",
+            type(exc).__name__, exc,
+        )
+        return _retrieval_fallback(selected)
+
     if not result.no_answer and text and text != NO_ANSWER:
         return RagAnswer(
             text=text,
@@ -354,12 +390,14 @@ def answer_question(
             used_chunk_ids=[c.chunk_id for c in selected],
         )
 
-    # Bukti internal tidak mencukupi → web fallback (bila diizinkan).
+    # LLM menyatakan NO_ANSWER → coba web fallback dulu, baru retrieval fallback.
     if _web_allowed(allow_web):
         web = _attempt_web_fallback(db, workspace_id, question, llm)
         if web is not None:
             return web
-    return _no_answer({"attempted": _web_allowed(allow_web)})
+    # Ada chunks tapi LLM bilang tidak cukup — tetap sajikan retrieval
+    # agar pengguna tidak mendapat "informasi belum tersedia" padahal data ada.
+    return _retrieval_fallback(selected)
 
 
 class _AnswerStream:
@@ -422,8 +460,10 @@ def answer_stream(
                 return
 
         # Jalur generatif (termasuk "auto" bila ekstraktif gagal).
+        llm_stream_error = False
         if selected:
             held = ""
+            llm_stream_error = False
             try:
                 for delta in llm.stream_generate(question, _context_texts(selected)):
                     deltas.append(delta)
@@ -434,9 +474,13 @@ def answer_stream(
                     held = ""
                 if held:
                     yield held
-            except Exception as exc:  # noqa: BLE001 - error LLM → jalur no-answer
-                logger.warning("stream LLM gagal: %s: %s", type(exc).__name__, exc)
+            except Exception as exc:  # noqa: BLE001 - LLM mati → fallback retrieval
+                logger.warning(
+                    "stream LLM gagal: %s: %s — fallback ke retrieval langsung",
+                    type(exc).__name__, exc,
+                )
                 deltas.clear()
+                llm_stream_error = True
 
         text = "".join(deltas).strip()
         if selected and text and not _is_no_answer(text):
@@ -450,12 +494,22 @@ def answer_stream(
             )
             return
 
-        if _web_allowed(allow_web):
+        # LLM error / NO_ANSWER → coba web, lalu retrieval fallback.
+        if _web_allowed(allow_web) and not llm_stream_error:
             web = _attempt_web_fallback(db, workspace_id, question, llm)
             if web is not None:
                 finals.append(web)
                 yield web.text
                 return
+
+        if selected:
+            # Chunks ada — sajikan cuplikan retrieval agar tidak no_answer.
+            fb = _retrieval_fallback(selected)
+            finals.append(fb)
+            if not text:  # belum ada delta terkirim → yield sekarang
+                yield fb.text
+            return
+
         finals.append(_no_answer({"attempted": _web_allowed(allow_web)}))
 
     return _AnswerStream(generate(), finals)
