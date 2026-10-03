@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 from ai_asistent_core.config import get_settings
 from ai_asistent_core.injection import harden_context
 from ai_asistent_core.llm import NO_ANSWER, LLMProvider, _is_no_answer, get_llm_provider
-from ai_asistent_core.models import WebSearchLog
 from ai_asistent_core.rerank import LexicalConfidence, lexical_confidence
 from ai_asistent_core.retrieval import RetrievedChunk, retrieve
 from ai_asistent_core.websearch import (
@@ -211,6 +210,8 @@ def _log_web_search(
 ) -> None:
     """Simpan satu baris web_search_logs (best-effort; jangan ganggu chat)."""
     try:
+        from ai_asistent_core.models import WebSearchLog  # lazy: hindari pgvector di unit test
+
         db.add(
             WebSearchLog(
                 workspace_id=workspace_id,
