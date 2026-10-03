@@ -119,6 +119,14 @@ class CoreSettings(BaseSettings):
     # Timeout untuk external reader fetch (seconds)
     web_reader_timeout_seconds: float = 8.0
 
+    # Fase 6 upgrade: document parser gateway + optional Docling (conditional).
+    # Parser: builtin (default, pypdf/python-docx/etc) | docling (layout analysis, heavy)
+    # Docling is optional dependency; only loaded if explicitly enabled.
+    # Requires: pip install docling (torch-based, ~500MB, not in default dependencies)
+    document_parser: str = "builtin"
+    # Fallback provider (reserved for future; currently unused)
+    document_fallback: str | None = None
+
     # Fase 7: web fallback
     web_fallback_mode: str = "internal_only"  # internal_only | internal_plus_web
     web_search_provider: str = "none"  # none | bing_rss | duckduckgo | searx | tavily
