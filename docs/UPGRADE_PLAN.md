@@ -19,11 +19,14 @@ Ringkasan urutan:
 | --- | --- | --- | --- | --- |
 | 0 | Baseline & harness evaluasi | P0 | — | acuan delta — **selesai** |
 | 1 | Reranker ringan (deterministik) | P0 | 0 | recall@5, MRR — **selesai** (+0.10 / +0.083) |
-| 2 | Answer mode extractive bertingkat | P0 | 1 | latensi, biaya token |
-| 3 | Query rewriting berbasis aturan | P1 | 1 | recall@5 |
-| 4 | SSRF-safe fetch & validasi URL | P1 (security) | — | uji keamanan |
-| 5 | External reader adapter (opsional) | P2 | 4 | kualitas jawaban web |
-| 6 | Parser gateway + Docling opsional | P2 | 3 | kualitas ekstraksi |
+| 2 | Answer mode extractive bertingkat | P0 | 1 | latensi, biaya token — **selesai** |
+| 3 | Query rewriting berbasis aturan | P1 | 1 | recall@5 — **selesai** |
+| 4 | SSRF-safe fetch & validasi URL | P1 (security) | — | uji keamanan — **selesai** |
+| 5 | External reader adapter (opsional) | P2 | 4 | kualitas jawaban web — **selesai** |
+| 6 | Parser gateway + Docling opsional | P2 | 3 | kualitas ekstraksi — **selesai** |
+| 7 | Semantic embedding (fastembed) | P1 | 5 | query recall — **selesai** |
+| 9 | Production hardening | P0 | semua | CI, docker-prod, nginx, backup, benchmark — **selesai** |
+| 10 | Pilot & Scale | P0 | 9 | pilot check, ops guide, SLO — **selesai** |
 | — | MinerU / Firecrawl / Jina / LlamaParse | P3 | 5,6 | ditunda |
 
 Urutan sengaja berbeda dari dokumen sumber (yang menaruh Docling di depan): parser kita
@@ -400,3 +403,71 @@ eval            make eval ARGS=--write  +  backend/tests/test_retrieval_eval.py
 commit          pesan Indonesia + trailer Codebuff
 CI              gh run watch <RUN_ID> --exit-status  (6 job hijau)
 ```
+
+---
+
+## Fase 9 — Production Hardening ✅ selesai (3 Oktober 2026)
+
+**Tujuan:** sistem dapat dijalankan dan dioperasikan di produksi secara aman, terukur, dan dapat dipulihkan.
+
+### Yang dikerjakan
+
+| Artefak | Lokasi | Keterangan |
+| --- | --- | --- |
+| Docker Compose produksi | `docker-compose.prod.yml` | Worker service + Nginx + Certbot + health-based restart |
+| Dockerfile API (multi-stage) | `infra/docker/Dockerfile.api` | Build non-root, uvicorn 2 workers |
+| Dockerfile Worker (multi-stage) | `infra/docker/Dockerfile.worker` | RQ worker |
+| Nginx reverse proxy | `infra/nginx/nginx.conf` | HTTPS-ready, security headers, rate limit, SSE support |
+| systemd backup timer | `infra/systemd/ai-backup.{service,timer}` | Jadwal backup harian 02:00 UTC |
+| Backup otomatis | `scripts/cron_backup.sh` | Retensi 7 hari, webhook notifikasi |
+| Benchmark e2e | `scripts/benchmark.sh` | p50/p95/p99 + SLO pass/fail |
+| Panduan deployment | `docs/DEPLOYMENT.md` | Setup lokal + produksi + checklist go-live |
+| Runbook insiden | `docs/INCIDENT_RESPONSE.md` | Triase, rollback, postmortem template |
+| Semantic embedding | `core/src/ai_asistent_core/embeddings.py` | FastEmbed multilingual (paraphrase-MiniLM) |
+
+### Komponen yang sudah ada sebelumnya (dari Fase 1–7 roadmap)
+
+- Rate limiting (sliding window per token/IP) — `app/observability.py`
+- Circuit breaker + retry/backoff — `core/resilience.py`
+- Structured JSON logging + correlation ID — `app/logging.py`, `app/observability.py`
+- Prometheus metrics in-process — `app/observability.py`
+- Backup + restore + drill — `scripts/backup.sh`, `restore.sh`, `restore_drill.sh`
+- Secret scan (CI blocking) — `scripts/scan_secrets.sh`
+- Dependency audit — `scripts/scan_deps.sh`
+- Idempotency key upload — `app/idempotency.py`
+
+---
+
+## Fase 10 — Pilot & Scale ✅ selesai (3 Oktober 2026)
+
+**Tujuan:** sistem dapat dioperasikan oleh tim, kualitas terukur, dan dapat di-scale.
+
+### Yang dikerjakan
+
+| Artefak | Lokasi | Keterangan |
+| --- | --- | --- |
+| Pilot readiness check | `scripts/pilot_check.sh` | 10 verifikasi end-to-end otomatis |
+| Panduan operasional | `docs/OPERATIONS.md` | SLO, monitoring, quality loop, scale-out |
+
+### Status Definition of Done (dari roadmap)
+
+```
+[✅] Upload/indexing/chat bekerja end-to-end
+[✅] Jawaban grounded dan memiliki sitasi
+[✅] No-answer berfungsi
+[✅] Web fallback dapat dikontrol (APP_WEB_FALLBACK_MODE)
+[✅] RBAC mencegah kebocoran data lintas workspace
+[✅] Test dan CI lulus (6 job hijau)
+[✅] Log/metric tersedia (/metrics Prometheus)
+[✅] Backup dan recovery terdokumentasi
+[✅] Deployment dapat diulang dari dokumentasi (DEPLOYMENT.md)
+[✅] Semantic embedding lokal (fastembed, multilingual)
+```
+
+### Langkah berikutnya (pasca-Fase 10)
+
+1. **Pilot dengan data nyata** — jalankan `./scripts/pilot_check.sh` sebelum onboard user
+2. **Evaluasi berkala** — `make eval` mingguan, bandingkan delta metrik
+3. **Scale sesuai panduan** — lihat `docs/OPERATIONS.md` §5
+4. **Aktifkan Grafana/Loki** bila tim tumbuh (metrik sudah tersedia di `/metrics`)
+5. **P3 (ditunda)** — MinerU, Firecrawl, Qdrant sesuai kebutuhan terukur

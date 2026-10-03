@@ -1,0 +1,15 @@
+[Unit]
+Description=AI Knowledge Assistant — Backup harian
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai_asistent
+ExecStart=/opt/ai_asistent/scripts/cron_backup.sh
+StandardOutput=append:/var/log/ai_asistent/backup.log
+StandardError=append:/var/log/ai_asistent/backup.log
+User=ai_asistent
+Environment=BACKUP_RETAIN_DAYS=7
+# Opsional: notifikasi Slack
+# Environment=WEBHOOK_URL=https://hooks.slack.com/services/...

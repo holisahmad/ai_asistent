@@ -56,9 +56,14 @@ class CoreSettings(BaseSettings):
     chunk_overlap_tokens: int = 64
     embedding_dim: int = 384
     embedding_batch_size: int = 32
-    embedding_provider: str = "local"  # local | openai
+    embedding_provider: str = "local"  # local | openai | fastembed
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
+    # Model fastembed (hanya dipakai bila embedding_provider=fastembed)
+    # Default: multilingual MiniLM — support Bahasa Indonesia, ~235 MB ONNX
+    fastembed_model: str = (
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
 
     # Fase 6: retrieval & RAG
     retrieval_top_k: int = 6

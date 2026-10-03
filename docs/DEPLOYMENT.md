@@ -1,157 +1,317 @@
-# Deployment, Operasi & Incident Response — AI Knowledge Assistant
+# Deployment Guide — AI Knowledge Assistant
 
-Dokumen ini melengkapi [../roadmap.md](../roadmap.md) (Fase 10: Pilot & Scale) dan
-[ARCHITECTURE.md](ARCHITECTURE.md). Tujuannya: deployment dapat **diulang dari
-dokumentasi ini** tanpa pengetahuan tacit, dan insiden bisa ditangani/rollback
-dengan prosedur yang jelas.
+> **Fase 9 Production Hardening** — dokumen ini adalah satu-satunya sumber kebenaran
+> untuk deployment, operasi rutin, backup, dan scaling. Deployment harus dapat diulang
+> dari dokumen ini tanpa pengetahuan tacit.
+
+Lihat juga: [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) · [API.md](API.md) ·
+[INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) · [OPERATIONS.md](OPERATIONS.md)
+
+---
 
 ## 1. Prasyarat
 
-- Docker + Docker Compose v2 (dev) atau cluster Kubernetes / managed services (produksi).
-- `uv` (Python) dan Node.js 22+ (frontend).
-- Akun object storage S3-compatible (MinIO/S3), PostgreSQL 16 + ekstensi `pgvector`, Redis 7.
-- Kunci API LLM (opsional; bisa memakai gateway OpenAI-compatible / model lokal).
+| Komponen | Versi minimum | Catatan |
+|---|---|---|
+| Docker Engine | 24+ | Docker Desktop untuk dev Mac |
+| Docker Compose | v2 plugin | `docker compose version` |
+| `uv` | 0.4+ | `pip install uv` atau `brew install uv` |
+| Node.js | 22+ | untuk frontend build |
+| Python | 3.12 | dikelola oleh `uv` |
+| PostgreSQL | 16 + pgvector | via Docker di dev; managed di prod |
+| Redis | 7 | via Docker di dev |
+| MinIO / S3 | API-compatible | via Docker di dev; AWS S3/GCS di prod |
 
-## 2. Konfigurasi
+---
 
-Semua variabel aplikasi berprefix `APP_` (lihat [.env.example](../.env.example)).
-Yang **wajib** ditinjau untuk produksi:
+## 2. Development Lokal (Mac/Linux)
 
-| Variabel | Catatan produksi |
-| --- | --- |
-| `APP_DATABASE_URL` | Managed Postgres + TLS; jangan pakai kredensial dev. |
-| `APP_REDIS_URL` | Redis dengan autentikasi/TLS; jangan expose ke publik. |
-| `APP_MINIO_*` | Bucket privat; kredensial dari secret manager. |
-| `APP_CORS_ORIGINS_CSV` | Hanya origin frontend resmi. |
-| `APP_LLM_PROVIDER` / `APP_OPENAI_*` | `openai` atau `openai_compat`; API key dari secret manager. |
-| `APP_EMBEDDING_PROVIDER` | Disarankan `openai` di produksi (semantik penuh; lokal hanya BoW). |
-| `APP_WEB_FALLBACK_MODE` | `internal_only` bila web tidak diizinkan. |
-| `APP_METRICS_TOKEN` | Set agar `/metrics` tidak publik. |
-| `APP_API_RATE_LIMIT_PER_MIN` | Sesuaikan kuota per token/tim. |
-
-Jangan pernah commit `.env` — sudah dicegah `.gitignore` dan diperiksa `make scan-secrets`.
-
-## 3. Deployment (Docker Compose — baseline)
+### Setup pertama kali
 
 ```bash
-cp .env.example .env            # sesuaikan nilai produksi
-make infra                      # Postgres + Redis + MinIO
-make install                    # uv sync + npm ci
-make migrate                    # alembic upgrade head (wajib sebelum API serve)
-make api                        # uvicorn (ganti ke gunicorn/uvicorn workers, lihat §7)
-make worker                     # RQ worker
-make web                        # next build && next start (bukan dev)
+git clone https://github.com/holisahmad/ai_asistent.git
+cd ai_asistent
+
+# 1. Environment
+cp .env.example .env
+# Edit .env: set APP_LLM_PROVIDER, APP_OPENAI_API_KEY, dll
+
+# 2. Diagnosa environment
+make doctor            # cek Docker, port, .env, konektivitas
+make doctor ARGS=--fix # perbaiki otomatis (nyalakan Docker, buat .env, jalankan infra)
+
+# 3. Infra + install
+make infra             # Postgres + Redis + MinIO (docker compose up -d --wait)
+make install           # uv sync + npm install
+
+# 4. Migrasi DB (WAJIB sebelum API pertama kali)
+make migrate
+
+# 5. Jalankan services (tiap terminal terpisah)
+make api               # backend :8000
+make worker            # RQ worker
+make web               # frontend :3000
+
+# 6. Verifikasi
+make smoke             # GET /health/live + /health/ready
 ```
 
-Urutan penting: **migrasi dulu**, baru API/worker. API boleh naik lebih dulu daripada
-worker (upload tetap masuk queue), tetapi chat butuh worker agar dokumen ter-index.
+### Perintah harian
 
-### Health & readiness
+```bash
+make lint              # ruff check semua package
+make typecheck         # mypy + tsc
+make test              # pytest + tsc
+make eval ARGS=--write # evaluasi kualitas RAG → docs/reports/eval-<stamp>.md
+make bench             # benchmark p50/p95
+make backup            # backup Postgres + MinIO → ./backups/<timestamp>/
+make scan-secrets      # pindai kredensial sebelum push
+```
 
-- `GET /health/live` — proses hidup.
-- `GET /health/ready` — DB/Redis/storage; kembar 503 bila belum siap → jadikan probe liveness/readiness orchestrator.
-- `GET /version` — nama & versi aplikasi (untuk verifikasi rilis).
-- `GET /metrics` — metrik Prometheus (kunci dengan `APP_METRICS_TOKEN`).
+---
 
-## 4. CI/CD
+## 3. Produksi — Docker Compose
 
-`.github/workflows/ci.yml` menjalankan: lint+typecheck+test `core`/`backend`/`worker`,
-build frontend, validasi compose, dan job **security** (secret scan blocking +
-dependency audit non-blocking). Job backend memakai service `pgvector` + `MinIO`,
-menjalankan `alembic upgrade head`, lalu pytest — termasuk **quality gate Fase 10**
-(`backend/tests/test_retrieval_eval.py`): recall@5 ≥ 0.8, MRR ≥ 0.6, sitasi ≥ 0.8,
-no-answer = 1.0, halusinasi = 0, false-no-answer ≤ 0.2.
+### File yang dipakai
 
-Rilis: merge ke `main` hanya bila CI hijau. Tag rilis (`vX.Y.Z`) menandai image yang
-di-deploy; catat commit SHA di changelog.
+```
+docker-compose.yml           # infra: Postgres, Redis, MinIO
+docker-compose.prod.yml      # override produksi: API, worker, nginx, certbot
+infra/
+  docker/
+    Dockerfile.api           # multi-stage build backend
+    Dockerfile.worker        # multi-stage build worker
+  nginx/
+    nginx.conf               # reverse proxy + TLS + security headers
+  certbot/                   # Let's Encrypt certificates (diisi Certbot)
+  systemd/
+    ai-backup.service        # backup harian via systemd
+    ai-backup.timer
+```
+
+### Deploy ke server Linux
+
+```bash
+# 1. Clone di server
+git clone https://github.com/holisahmad/ai_asistent.git /opt/ai_asistent
+cd /opt/ai_asistent
+
+# 2. Buat .env.prod (JANGAN gunakan .env dev!)
+cp .env.example .env.prod
+# Edit .env.prod: isi semua nilai produksi dari secret manager
+
+# 3. (Pertama kali) Dapatkan sertifikat TLS dengan Certbot
+docker run --rm \
+  -v $(pwd)/infra/certbot:/etc/letsencrypt \
+  -v $(pwd)/infra/certbot/webroot:/var/www/certbot \
+  certbot/certbot certonly --webroot \
+  -w /var/www/certbot -d yourdomain.com \
+  --email admin@yourdomain.com --agree-tos --non-interactive
+# Kemudian edit infra/nginx/nginx.conf: uncomment ssl_certificate*,
+# hapus baris ssl fallback self-signed
+
+# 4. Build images
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+
+# 5. Jalankan infra dulu
+docker compose -f docker-compose.yml up -d --wait postgres redis minio
+
+# 6. Migrasi DB
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm api \
+  uv run alembic upgrade head
+
+# 7. Naikan semua services
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
+
+# 8. Verifikasi
+curl https://yourdomain.com/health/ready
+curl https://yourdomain.com/version
+```
+
+### Update / Rilis baru
+
+```bash
+cd /opt/ai_asistent
+git pull origin main
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+# Migrasi DB jika ada migration baru
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm api \
+  uv run alembic upgrade head
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
+curl https://yourdomain.com/version   # konfirmasi versi baru
+```
+
+---
+
+## 4. Variabel Produksi Wajib
+
+> Semua secret dikelola via environment injection atau secret manager (Vault, AWS SSM).
+> **Jangan pernah commit `.env.prod` ke repo.**
+
+| Variabel | Catatan |
+|---|---|
+| `APP_DATABASE_URL` | Managed Postgres + TLS (`sslmode=require`) |
+| `APP_REDIS_URL` | Redis dengan password (`redis://:pass@host:6379/0`) |
+| `APP_MINIO_*` | Bucket privat; `MINIO_SECRET_KEY` dari secret manager |
+| `APP_OPENAI_API_KEY` | Dari secret manager; rotate berkala |
+| `APP_METRICS_TOKEN` | Random string 32+ karakter; wajib di produksi |
+| `APP_CORS_ORIGINS_CSV` | Hanya domain frontend resmi |
+| `POSTGRES_PASSWORD` | Bukan `ai_assistant` — password kuat |
+| `APP_LLM_PROVIDER` | `openai` atau `openai_compat`; bukan `local` |
+| `APP_EMBEDDING_PROVIDER` | `fastembed` (lokal) atau `openai` (cloud) |
+| `APP_ENVIRONMENT` | `production` |
+
+Lihat daftar lengkap: [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md)
+
+---
 
 ## 5. Backup & Restore
 
+### Backup manual
+
 ```bash
-make backup          # ./backups/<timestamp>/ {postgres.dump, minio/, metadata.json}
-make restore-drill   # backup → restore ke DB scratch → bandingkan → PASS/FAIL
-make restore DIR=backups/<timestamp> [DB=nama_database]
+make backup
+# → ./backups/<timestamp>/{postgres.dump, minio/, metadata.json}
 ```
 
-- Backup memakai `pg_dump -Fc` + salinan data MinIO, disertai checksum sha256 dan
-  jumlah tabel di `metadata.json`.
-- **Restore drill wajib dijalankan berkala** (mis. mingguan) di lingkungan non-produksi;
-  drill membandingkan jumlah baris tabel inti (users, workspaces, files, documents,
-  document_chunks, chats, messages, citations, audit_events) antara sumber & hasil restore.
-- RPO/RTO: backup harian → RPO ≤ 24 jam; restore drill terukur (detik–menit pada dataset dev).
-  Untuk produksi, tambahkan WAL archiving / PITR dari penyedia managed Postgres.
-
-## 6. Incident Response
-
-**Deteksi** — sumber sinyal:
-- `GET /metrics`: rate-limit 429, histogram latensi retrieval/chat, status breaker.
-- Log JSON terstruktur (`request_id`, `action` audit) — grep `X-Request-ID` untuk menautkan satu request.
-- `/health/ready` 503 → ketergantungan infra bermasalah.
-
-**Triase** (skenario umum):
-
-| Gejala | Kemungkinan penyebab | Tindakan |
-| --- | --- | --- |
-| Setup lokal tidak jalan (infra/env) | Docker mati, port terpakai, `.env` hilang/salah, layanan belum siap | Jalankan `make doctor` — mencetak item merah + langkah perbaikan. Untuk perbaikan otomatis (nyalakan Docker, `docker compose up -d --wait`, salin `.env`): `make doctor ARGS=--fix`. |
-| `/health/ready` 503 | DB/Redis/MinIO turun | Cek container/instance; pulihkan ketergantungan; API tetap liveness OK. |
-| Chat lambat / timeout | Provider LLM lambat / breaker terbuka | Cek metrik breaker & error log; kurangi `APP_RETRIEVAL_TOP_K`; fallback provider. |
-| 429 massal | Rate limit terlalu ketat / klien loop | Naikkan `APP_API_RATE_LIMIT_PER_MIN` atau perbaiki klien; cek `Retry-After`. |
-| Web fallback error / hasil tak relevan | Provider web menolak/diblokir (403, captcha, hijack DNS) atau mengembalikan hasil di luar kueri (mis. Bing RSS bisa menyajikan item acak per jaringan) | Isi `APP_WEB_SEARCH_FALLBACK_PROVIDERS_CSV` (mis. `duckduckgo`) agar provider cadangan dipakai saat provider utama error atau semua hasilnya di bawah `APP_WEB_EVIDENCE_MIN_RELEVANCE`; degrade otomatis ke no-answer (bukan 5xx). |
-| Jawaban tidak grounded | Dokumen belum ter-index / embedding lama | Cek status `indexed`; jalankan reindex (embedding berubah antarversi). |
-| Runtime Error `Cannot find module './NNN.js'` di :3000 | Artefak `.next` campur aduk — `next build` dijalankan saat `next dev` masih aktif (atau build terpotong) | Hentikan `make web`, jalankan `make clean`, start ulang. Jangan jalankan `npm run build` bersamaan dengan dev server. |
-
-**Eskalasi**: incident commander mencatat timeline, dampak, dan keputusan. Setiap
-insiden kritis → postmortem maksimal 3 hari kerja.
-
-## 7. Rollback
-
-1. **Aplikasi**: deploy image/tag rilis sebelumnya; proses stateless → rollback cepat.
-2. **Skema DB**: migrasi Alembic bersifat *upgrade*; hindari downgrade destruktif.
-   Bila perlu, pulihkan dari backup (§5) ke DB baru lalu arahkan `APP_DATABASE_URL`.
-3. **Index**: bila kualitas retrieval turun setelah perubahan embedding/model,
-   jalankan reindex (`POST /files/{id}/reindex`) sebelum menilai regresi.
-4. **Verifikasi pasca-rollback**: `/health/ready`, `/version`, satu pertanyaan smoke
-   dari dataset evaluasi, dan cek metrik 5xx/429.
-
-## 8. Scaling
-
-| Tahap | Pemicu | Langkah |
-| --- | --- | --- |
-| 1 (sekarang) | pilot kecil | API + worker satu host; pgvector; MinIO/Redis satu instance. |
-| 2 | CPU/latensi API naik | Pisah service: API di-scale horizontal (stateless), worker di-scale via beberapa proses/queue. |
-| 3 | ingest backlog | Tambah worker khusus ingestion; pisahkan scheduler/cron (cleanup, reindex massal) ke proses sendiri. |
-| 4 | DB baca berat | Read replica untuk daftar/riwayat; indeks tambahan bila perlu; tune HNSW/IVFFlat. |
-| 5 | pgvector tak memadai | Migrasi ke Qdrant via `VectorStoreProtocol` (tanpa ubah pemanggil); reindex penuh. |
-
-Praktik: batasi `APP_RETRIEVAL_TOP_K`/`CANDIDATES` untuk menahan biaya token;
-pantau histogram latensi & biaya token dari `scripts/bench.py` dan laporan eval.
-
-## 8b. Pemeliharaan Embedding
-
-Skor dense retrieval hanya konsisten bila vektor chunk dan vektor query dihitung
-oleh kode/provider yang sama. Saat `APP_EMBEDDING_PROVIDER` atau dimensi berubah,
-jalankan:
+### Backup otomatis (server)
 
 ```bash
-make reembed ARGS=--check   # non-destruktif: laporkan cosine lama-vs-baru (exit 1 bila ada stale)
-make reembed                # hitung ulang embedding semua chunk dari content
+# Crontab — backup harian 02:00
+(crontab -l 2>/dev/null; echo "0 2 * * * cd /opt/ai_asistent && ./scripts/cron_backup.sh >> ./backups/cron.log 2>&1") | crontab -
+
+# Atau systemd timer
+sudo cp infra/systemd/ai-backup.{service,timer} /etc/systemd/system/
+sudo sed -i 's|/opt/ai_asistent|'$(pwd)'|' /etc/systemd/system/ai-backup.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now ai-backup.timer
+sudo systemctl list-timers ai-backup.timer   # verifikasi jadwal
+```
+
+### Verifikasi backup (drill)
+
+```bash
+make restore-drill
+# Output: RESTORE DRILL: PASS / FAIL
+# Jalankan mingguan di lingkungan staging
+```
+
+### Restore
+
+```bash
+# Restore ke database aktif (HATI-HATI — akan menimpa data!)
+make restore DIR=backups/20261003T020000Z
+
+# Restore ke database baru (aman untuk verifikasi)
+make restore DIR=backups/20261003T020000Z DB=ai_assistant_restore_test
+```
+
+### Retensi backup
+
+- **Lokal**: `BACKUP_RETAIN_DAYS=7` (default) di `scripts/cron_backup.sh`
+- **Produksi**: salin backup ke object storage eksternal (S3/GCS) + retensi 30 hari
+- **Database managed**: aktifkan PITR (Point-in-Time Recovery) untuk RPO < 1 jam
+
+---
+
+## 6. Embedding & Reindex
+
+Model embedding menentukan kualitas retrieval. Bila `APP_EMBEDDING_PROVIDER` atau
+model berubah, **semua chunk harus di-reembed** — vektor lama tidak kompatibel.
+
+```bash
+# Cek apakah ada chunk yang perlu reembed
+make reembed ARGS=--check    # exit 1 bila ada stale; gunakan di CI/health check
+
+# Re-embed semua chunk
+make reembed
+
+# Re-embed workspace tertentu dengan batch size besar
 make reembed ARGS='--workspace <WS_ID> --batch 64'
 ```
 
-Skrip membaca langsung `document_chunks.content` (tidak mem-parse ulang file),
-sehingga aman dijalankan tanpa object storage. Jadwalkan `--check` pada proses
-operasi berkala; bila melaporkan stale > 0, jalankan `make reembed` sebelum menilai
-kualitas retrieval.
+---
 
-## 9. Evaluasi Berkala (Pilot)
+## 7. CI/CD Pipeline
+
+`.github/workflows/ci.yml` mencakup 6 job paralel:
+
+| Job | Yang dicek |
+|---|---|
+| `core` | ruff + mypy + pytest (23 source files) |
+| `backend` | ruff + mypy + migrate + pytest (dengan Postgres + MinIO) |
+| `worker` | ruff + mypy + pytest |
+| `frontend` | tsc + next build |
+| `security` | scan_secrets.sh (blocking) + pip-audit (non-blocking) |
+| `infra` | `docker compose config -q` |
+
+**Quality gate RAG** (di job `backend`): recall@5 ≥ 0.8, MRR ≥ 0.6, citation ≥ 0.8,
+no-answer = 1.0, halusinasi = 0.
+
+Rilis: semua job hijau → merge ke `main` → tag `vX.Y.Z` → deploy.
+
+---
+
+## 8. Benchmark & SLO
 
 ```bash
-make eval ARGS=--write        # laporan docs/reports/eval-<stamp>.md (LLM stub)
-make eval ARGS='--llm gateway --write'   # dengan LLM/gateway sebenarnya
-make bench ARGS='--iterations 50'
+# Benchmark lokal (50 iterasi default)
+./scripts/benchmark.sh http://localhost:8000 50
+
+# Benchmark produksi
+./scripts/benchmark.sh https://yourdomain.com 100
 ```
 
-Tindak lanjuti laporan: perbaiki chunking (ukuran/overlap), reranker, prompt, atau
-pilihan model berdasarkan metrik correctness/recall/sitasi/latensi/biaya. Versikan
-dataset ([docs/eval/retrieval_dataset.json](eval/retrieval_dataset.json)) saat menambah kueri.
+SLO baseline (p95):
+
+| Endpoint | SLO |
+|---|---|
+| `GET /health/live` | ≤ 200 ms |
+| `GET /health/ready` | ≤ 200 ms |
+| `GET /api/v1/workspaces` | ≤ 2000 ms |
+| `POST /api/v1/.../chat/stream` (first token) | ≤ 5000 ms |
+
+---
+
+## 9. Scaling
+
+| Tahap | Pemicu | Langkah |
+|---|---|---|
+| 1 — pilot | < 50 user | Satu server: API + worker + infra Docker Compose |
+| 2 — scale API | CPU API > 70% | API stateless → scale horizontal; load balancer di depan nginx |
+| 3 — scale worker | Antrian RQ > 100 job | Tambah worker container; pisah queue ingestion/embedding |
+| 4 — DB read berat | query > 500 ms p95 | Read replica Postgres; tune HNSW `ef_search` |
+| 5 — vector scale | pgvector tidak cukup | Migrasi ke Qdrant via `VectorStoreProtocol`; reindex penuh |
+
+---
+
+## 10. Checklist Go-Live
+
+Sebelum mengekspos ke pengguna nyata, pastikan semua item ini terpenuhi:
+
+```
+Infrastructure
+[ ] HTTPS aktif (Certbot atau managed TLS)
+[ ] APP_METRICS_TOKEN diset (endpoint /metrics tidak publik)
+[ ] APP_MINIO_SECRET_KEY bukan default (bukan "minioadmin")
+[ ] POSTGRES_PASSWORD kuat dan bukan default
+[ ] Redis password diset (REDIS_PASSWORD)
+[ ] APP_CORS_ORIGINS_CSV hanya domain resmi
+
+Aplikasi
+[ ] APP_ENVIRONMENT=production
+[ ] APP_LLM_PROVIDER bukan "local" (bukan stub)
+[ ] make migrate berhasil di database produksi
+[ ] make smoke: /health/live + /health/ready hijau
+[ ] make eval: semua quality gate PASS
+[ ] make scan-secrets: PASS
+[ ] make scan-deps: PASS (atau temuan ditinjau)
+
+Operasi
+[ ] Backup otomatis terjadwal (crontab atau systemd timer)
+[ ] make restore-drill: PASS pada data produksi
+[ ] Log tersedia (stdout → log aggregator atau file)
+[ ] /metrics terhubung ke Prometheus/Grafana (atau manual pantau)
+[ ] Kontak on-call terdaftar di INCIDENT_RESPONSE.md
+[ ] Runbook rollback sudah dibaca dan dipahami tim
 ```

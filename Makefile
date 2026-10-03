@@ -1,4 +1,4 @@
-.PHONY: help infra infra-down doctor install api worker web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench reembed seed-demo
+.PHONY: help infra infra-down doctor install api worker worker-clean web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench reembed seed-demo pilot-check benchmark
 
 help:
 	@echo "AI Knowledge Assistant — perintah utama:"
@@ -9,6 +9,7 @@ help:
 	@echo "  make install       Install semua workspace (uv sync di root) + npm install"
 	@echo "  make api           Jalankan backend API di :8000 (reload)"
 	@echo "  make worker        Jalankan RQ worker (queue: default)"
+	@echo "  make worker-clean  Hapus registrasi worker lama dari Redis (bila 'worker-1 already exists')"
 	@echo "  make web           Jalankan frontend Next.js di :3000"
 	@echo "  make migrate       Jalankan migrasi Alembic (DB development)"
 	@echo "  make migration m='pesan'   Buat file migrasi baru"
@@ -26,6 +27,8 @@ help:
 	@echo "  make bench         Benchmark p50/p95/p99 (ARGS='--iterations 50')"
 	@echo "  make reembed       Hitung ulang embedding chunk (ARGS='--check' untuk cek)"
 	@echo "  make seed-demo     Buat/verifikasi akun demo lokal (APP_DEMO_PASSWORD='...' make seed-demo)"
+	@echo "  make pilot-check  Verifikasi kesiapan pilot end-to-end (10 cek otomatis)"
+	@echo "  make benchmark    Benchmark p50/p95/p99 e2e (ARGS='http://host:port 100')"
 	@echo "  make clean         Hapus artefak build (.next, __pycache__) — perbaiki 'Cannot find module ./*.js' (hentikan 'make web' dulu, lalu start ulang)"
 
 infra:
@@ -46,6 +49,11 @@ api:
 
 worker:
 	cd worker && uv run python -m worker.main
+
+worker-clean:
+	@echo "Menghapus registrasi worker lama dari Redis..."
+	redis-cli -p 6380 del rq:worker:worker-1 rq:workers rq:workers:default 2>/dev/null || true
+	@echo "Jalankan 'make worker' sekarang."
 
 web:
 	cd frontend && npm run dev
@@ -115,3 +123,9 @@ clean:
 # Password selalu lewat ENV — tidak ada kredensial hardcoded di repo.
 seed-demo:
 	APP_DEMO_PASSWORD="$(APP_DEMO_PASSWORD)" uv run --project backend python scripts/seed_demo_user.py
+
+pilot-check:
+	./scripts/pilot_check.sh $(ARGS)
+
+benchmark:
+	./scripts/benchmark.sh $(ARGS)
