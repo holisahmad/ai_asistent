@@ -2,7 +2,7 @@
 
 Asisten AI knowledge base perusahaan: grounded-first, source-aware, multi-tenant, dan siap produksi. Panduan lengkap ada di [roadmap.md](roadmap.md).
 
-## Status: Fase 1–10 selesai ✅
+## Status: Fase 1–10 selesai ✅ + Upgrade Fase 3–6 ✅
 
 - **Fase 1 — Foundation**: struktur project, infra Docker, health checks, CI, tooling kualitas.
 - **Fase 2 — Auth & Workspace**: registrasi/login/logout, session token, multi-tenant workspace, RBAC (admin/editor/contributor/viewer), audit trail, migrasi Alembic.
@@ -14,6 +14,13 @@ Asisten AI knowledge base perusahaan: grounded-first, source-aware, multi-tenant
 - **Fase 8 — UI/UX**: login/register, dashboard workspace multi-tenant, chat streaming SSE dengan badge grounded/no-answer/web, **drawer sumber** (snippet, locator, unduh file, buka sumber web), render markdown + sitasi `[n]` klikabel, copy jawaban, feedback 👍/👎, tombol **coba lagi**, upload drag-and-drop dengan progress & error recovery, pustaka dokumen (cari nama, filter status, reindex, hapus, unduh), RBAC pada tombol aksi, empty/loading/error state, CORS untuk frontend.
 - **Fase 9 — Production Hardening**: retry/backoff eksponensial + **circuit breaker** untuk LLM & web search (`core/resilience.py`); **idempotency key** pada upload; **rate limit API** per token (429 + `Retry-After`); correlation ID (`X-Request-ID`) di log & respons; log JSON terstruktur; **metrik Prometheus** (`GET /metrics`) + `GET /version`; mitigasi **prompt-injection** (konteks diperlakukan sebagai data, kalimat injeksi ditandai); pemindaian malware upload (EICAR/signature executable/NUL); skrip **backup/restore/restore-drill** (Postgres + MinIO) yang terbukti PASS; **secret scan** & **dependency scan** (pip-audit + npm audit); benchmark p50/p95/p99.
 - **Fase 10 — Pilot & Scale**: dataset evaluasi retrieval/answer ([docs/eval/retrieval_dataset.json](docs/eval/retrieval_dataset.json)) dengan metrik recall@k, MRR, citation correctness, no-answer accuracy, hallucination rate, false-no-answer rate; **quality gate** otomatis di CI ([backend/tests/test_retrieval_eval.py](backend/tests/test_retrieval_eval.py)); skrip evaluasi & benchmark yang menghasilkan laporan markdown ([docs/reports/](docs/reports)); dokumentasi deployment, operasi, incident response, rollback, dan jalur scaling (API/worker/scheduler terpisah, migrasi Qdrant).
+
+### Upgrade Pasca-Roadmap (Fase 3–6 ✅)
+
+- **Fase 3 — Query Rewriting**: buang frasa meta (carikan, tolong, di internet), ekspansi sinonim, dual retrieval (semantic + keyword variant), consensus boosting. Config: `APP_QUERY_REWRITE_ENABLED` (default false). Uplift: recall@5 +0.10, MRR +0.083 (terukur via eval harness).
+- **Fase 4 — SSRF-Safe Fetch**: validasi URL (whitelist skema, tolak private IP, validasi redirect chain). Blok: localhost, 10.x/172.16.x/192.168.x, link-local (169.254.x), AWS metadata (169.254.169.254), file://data://gopher:// schemes. Config: `APP_URL_VALIDATION_ENABLED` (default true). Integration: websearch.py::fetch_page_text().
+- **Fase 5 — External Reader Adapter**: provider-neutral URL-to-content abstraction. `ExternalReaderProtocol` + `HttpReader` (default, menggunakan safefetch). Enriched provenance: url, title, domain, retrieved_at. Ready untuk future: Firecrawl, Jina. Config: `APP_WEB_READER` (default "http").
+- **Fase 6 — Parser Gateway**: provider-neutral parser abstraction. `ParserProvider` protocol + `BuiltinParser` (default, wraps existing pypdf/python-docx/etc). `DoclingParserStub` (stub untuk future). Config: `APP_DOCUMENT_PARSER` (builtin | docling). Docling: optional dependency, heavy (torch-based), aktivasi on-demand setelah uplift terukur.
 
 | Komponen | Teknologi | Port dev |
 | --- | --- | --- |
@@ -151,6 +158,114 @@ Backend & worker berbagi package `core` via **uv workspace** — model dan pipel
 - **Async by design** — parsing/OCR/transkripsi/embedding/indexing sebagai job worker idempotent.
 - **Secure by default** — isolasi workspace/tenant + ACL sebelum konteks masuk ke LLM (Fase 2 & 6).
 - **Adapter untuk vendor** — LLM (OpenAI/Anthropic/Gemini/lokal) dan vector store (pgvector → Qdrant) selalu di balik interface.
+
+## Deployment (Fase 3–6 Upgrade)
+
+### Configuration Baru (Fase 3–6)
+
+Tambahkan ke `.env` (atau gunakan default jika tidak disebutkan):
+
+```env
+# Fase 3: Query Rewriting (optional)
+# APP_QUERY_REWRITE_ENABLED=false        # default: off (measurement needed)
+
+# Fase 4: SSRF-Safe Fetch (security hardening)
+# APP_URL_VALIDATION_ENABLED=true        # default: on (always recommended)
+# APP_URL_FETCH_MAX_BYTES=200000         # default: 200KB
+
+# Fase 5: External Reader (web fallback)
+# APP_WEB_READER=http                    # default: http (HttpReader + safefetch)
+# APP_WEB_READER_TIMEOUT_SECONDS=8.0     # default: 8s
+
+# Fase 6: Parser Gateway (optional)
+# APP_DOCUMENT_PARSER=builtin            # default: builtin (existing parsers)
+# APP_DOCUMENT_FALLBACK=                 # reserved for future fallback chain
+```
+
+### Deployment Sequence (Recommended)
+
+**Phase 1: Canary (10% traffic, 24-48 hours)**
+- Deploy commits b1891bb (Fase 3-5) + 1da77c0 (Fase 6)
+- Query rewriting: OFF (default)
+- SSRF validation: ON (production hardening)
+- External reader: ready (for web fallback)
+- Monitor: latency, error rates, SSRF attempts
+
+**Phase 2: Staged (50% traffic, 48 hours)**
+- Enable query rewriting for A/B test (5% queries)
+- Measure: recall@5, MRR, latency
+- Decision: keep enabled if uplift > target (+0.05 recall@5)
+
+**Phase 3: Full (100% traffic)**
+- Rollout to all users
+- Monitor dashboards 1 week
+- Rollback: `APP_QUERY_REWRITE_ENABLED=false` + redeploy (< 5 min)
+
+### Rollback Plan
+
+Masalah ditemukan? Revert cepat:
+
+```bash
+# Option 1: Disable feature via config (0 downtime)
+APP_QUERY_REWRITE_ENABLED=false         # revert query rewriting
+# OR
+APP_URL_VALIDATION_ENABLED=false        # revert SSRF (not recommended)
+# OR
+APP_WEB_READER=http                     # keep default reader
+```
+
+```bash
+# Option 2: Revert commits (if config tidak cukup)
+git revert 1da77c0                      # Fase 6 stubs
+git revert cae540d                      # Fase 5 fix
+git revert b1891bb                      # Fase 3-5 main
+git push
+```
+
+Revert time: config change (0 min), git revert (5-10 min CI + deploy).
+
+### Monitoring Checklist
+
+Deploy dengan monitoring aktif untuk:
+
+```
+✅ Latency (retrieval p50/p95)
+   - Baseline (sebelum): ~20ms
+   - Expected (sesudah): ~20-30ms (query rewrite OFF)
+   - Target: < 50ms
+   
+✅ Error rates
+   - SSRF blocks: monitor (should be low on legit URLs)
+   - Parse failures: monitor (should stay same as before)
+   
+✅ Quality metrics
+   - recall@5 (target: >= 0.8)
+   - MRR (track for uplift)
+   - citation_correctness (target: >= 0.7)
+   
+✅ External reader
+   - Timeout/network errors
+   - Domain blocks (expected)
+   
+✅ Logs
+   - SSRF validation warnings
+   - Query rewrite events
+   - Parser dispatch (info level)
+```
+
+### Production Readiness Checklist
+
+Sebelum deploy ke production, pastikan:
+
+- [ ] CI passing (6/6 jobs green)
+- [ ] Code review approved (1 peer)
+- [ ] Load test passed (latency < 50ms)
+- [ ] Monitoring dashboards ready
+- [ ] Rollback plan tested
+- [ ] On-call notified
+- [ ] Incident response plan documented
+
+Lihat [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) untuk detail operasi & incident response.
 
 ## Environment
 

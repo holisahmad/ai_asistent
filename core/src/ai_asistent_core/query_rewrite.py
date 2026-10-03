@@ -9,7 +9,6 @@ Default: OFF (`APP_QUERY_REWRITE_ENABLED=false`). Uplift diukur via eval dataset
 import re
 from dataclasses import dataclass
 
-
 # Frasa meta yang dibuang (Bahasa Indonesia + English).
 META_PHRASES = {
     # Indonesian
@@ -67,14 +66,19 @@ def _remove_meta_phrases(query: str) -> str:
 
 
 def _extract_keywords(query: str) -> list[str]:
-    """Ekstrak term penting (>= 3 char, bukan stopword)."""
+    """Ekstrak term penting (> 3 char atau bukan stopword pendek)."""
     basic_stopwords = {
+        # Indonesian
         "yang", "dan", "atau", "di", "ke", "dari", "untuk", "pada",
+        "ini", "itu", "ada", "apa", "hal", "saat", "jika", "maka",
+        "bisa", "akan", "sudah", "juga", "dengan", "oleh", "atas",
+        "bagi", "agar", "kami", "kita", "saya", "anda", "mereka",
+        # English
         "the", "and", "or", "in", "to", "from", "for", "at", "is",
-        "a", "an", "by", "with", "of", "as", "it", "be",
+        "a", "an", "by", "with", "of", "as", "it", "be", "its", "are",
     }
     tokens = re.findall(r"\b[a-z0-9]+\b", query.lower())
-    return [t for t in tokens if len(t) >= 3 and t not in basic_stopwords]
+    return [t for t in tokens if len(t) >= 4 and t not in basic_stopwords]
 
 
 def _expand_synonyms(keywords: list[str]) -> list[str]:

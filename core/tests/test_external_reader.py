@@ -1,7 +1,6 @@
 """Test external_reader.py — Fase 5."""
 
 import pytest
-from datetime import datetime
 
 from ai_asistent_core.external_reader import (
     ExternalDocument,

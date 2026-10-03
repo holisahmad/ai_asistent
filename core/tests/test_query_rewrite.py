@@ -1,7 +1,5 @@
 """Test query_rewrite.py — Fase 3."""
 
-import pytest
-
 from ai_asistent_core.query_rewrite import (
     RewrittenQuery,
     _expand_synonyms,
@@ -145,9 +143,14 @@ class TestRewriteQuery:
         # Query panjang dengan banyak stopword
         q = "carikan informasi yang detail tentang biaya kesehatan dan asuransi"
         r = rewrite_query(q)
-        # Semantic biasanya punya lebih banyak term
-        # Keyword hanya punya term penting
-        assert len(r.semantic) >= len(r.keyword)
+        # Semantic adalah cleaned query (semua term bermakna + stopword minimal)
+        # Keyword adalah extracted keywords + sinonim (bisa lebih panjang karena sinonim)
+        # Yang penting: keduanya mengandung term inti
+        assert "biaya" in r.semantic or "biaya" in r.keyword
+        assert "kesehatan" in r.semantic or "kesehatan" in r.keyword
+        # Keduanya berbeda dari original (meta phrase "carikan" dibuang)
+        assert "carikan" not in r.semantic
+        assert "carikan" not in (r.keyword or "")
 
 
 class TestShouldUseRewrite:
@@ -162,7 +165,10 @@ class TestShouldUseRewrite:
         assert should_use_rewrite(q)
 
     def test_long_query_use_rewrite(self) -> None:
-        q = "berapa total biaya kesehatan dan asuransi yang ditanggung perusahaan untuk karyawan full time"
+        q = (
+            "berapa total biaya kesehatan dan asuransi yang ditanggung "
+            "perusahaan untuk karyawan full time"
+        )
         assert should_use_rewrite(q)
 
     def test_medium_clean_query_no_rewrite(self) -> None:

@@ -9,7 +9,7 @@ never mixed with internal citations.
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Protocol
 from urllib.parse import urlparse
 
@@ -81,7 +81,7 @@ class HttpReader:
                 title=None,
                 content="",
                 domain=_parse_domain(url),
-                retrieved_at=datetime.utcnow().isoformat() + "Z",
+                retrieved_at=datetime.now(UTC).isoformat(),
                 source_type="web",
             )
 
@@ -96,7 +96,7 @@ class HttpReader:
             title=title,
             content=text,
             domain=_parse_domain(url),
-            retrieved_at=datetime.utcnow().isoformat() + "Z",
+            retrieved_at=datetime.now(UTC).isoformat(),
             content_type="text/html",
             source_type="web",
         )

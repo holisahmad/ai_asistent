@@ -70,11 +70,12 @@ def _validate_url(url: str) -> tuple[bool, str]:
         # 4) Resolve hostname ke IP, cek private
         try:
             import socket
-            ips = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            ips = socket.getaddrinfo(parsed.hostname, port)
             if not ips:
                 return False, f"Cannot resolve {parsed.hostname}"
 
-            for family, socktype, proto, canonname, sockaddr in ips:
+            for _family, _socktype, _proto, _canonname, sockaddr in ips:
                 ip_str = sockaddr[0]
                 if _is_private_ip(ip_str):
                     return False, f"Private/reserved IP: {ip_str}"
@@ -119,12 +120,10 @@ def safe_fetch(
             headers={"User-Agent": _USER_AGENT},
             timeout=timeout,
             follow_redirects=True,
-            limits=httpx.Limits(max_redirects=5),  # Limit redirects
         )
 
         # 3) Validasi setiap redirect (httpx secara otomatis follow, tapi kita
         #    perlu cek final URL)
-        final_parsed = urlparse(str(resp.url))
         is_valid_final, reason_final = _validate_url(str(resp.url))
         if not is_valid_final:
             logger.warning("SSRF check failed for redirect target=%s: %s", resp.url, reason_final)
@@ -150,9 +149,9 @@ def safe_fetch(
     except httpx.TimeoutException:
         logger.warning("Timeout fetching url=%s", url)
         return "", False, "HTTP timeout"
-    except httpx.RedirectLoop:
-        logger.warning("Redirect loop for url=%s", url)
-        return "", False, "Redirect loop detected"
+    except httpx.TooManyRedirects:
+        logger.warning("Too many redirects for url=%s", url)
+        return "", False, "Too many redirects"
     except httpx.HTTPError as e:
         logger.warning("HTTP error for url=%s: %s", url, e)
         return "", False, f"HTTP error: {e}"

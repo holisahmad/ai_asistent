@@ -110,8 +110,7 @@ class TestValidateURL:
 class TestSafeFetchIntegration:
     """safe_fetch() integration tests (mocked HTTP)."""
 
-    @pytest.mark.asyncio
-    async def test_safe_fetch_public_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_safe_fetch_public_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Fetch from public URL (mocked)."""
         # Mock httpx.get
         class MockResponse:

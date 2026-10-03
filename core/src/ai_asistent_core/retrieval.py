@@ -165,7 +165,9 @@ def retrieve(
     # 1) Dense: embed semua varian pertanyaan, KNN cosine (ACL di SQL via vecstore).
     all_dense: list[RetrievedChunk] = []
     embeddings = embed_batch(queries_to_search)
-    for q_idx, (query_variant, embedding) in enumerate(zip(queries_to_search, embeddings)):
+    for q_idx, (_query_variant, embedding) in enumerate(
+        zip(queries_to_search, embeddings, strict=True)
+    ):
         dense_matches = get_vector_store().search(
             db, workspace_id, embedding, n_candidates
         )
@@ -194,7 +196,11 @@ def retrieve(
                         locator_type=e.locator_type,
                         locator_start=e.locator_start,
                         locator_end=e.locator_end,
-                        dense_score=min(1.0, e.dense_score + 0.05) if e.chunk_id == c.chunk_id else e.dense_score,
+                        dense_score=(  # noqa: E501
+                            min(1.0, e.dense_score + 0.05)
+                            if e.chunk_id == c.chunk_id
+                            else e.dense_score
+                        ),
                         keyword_score=e.keyword_score,
                         score=e.score,
                     )

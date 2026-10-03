@@ -9,6 +9,7 @@ Design: ParserProvider protocol + factory. Docling guarded import (not installed
 import logging
 from typing import Protocol
 
+from ai_asistent_core.config import get_settings
 from ai_asistent_core.parsers import ParsedDocument
 
 logger = logging.getLogger("ai_asistent_core.parser_provider")
@@ -50,14 +51,12 @@ class BuiltinParser:
             ParsedDocument
         """
         from ai_asistent_core.parsers import (
+            CsvParser,
             DocxParser,
-            HtmlParser,
-            MarkdownParser,
             PdfParser,
             PptxParser,
-            TextParser,
+            TextLikeParser,
             XlsxParser,
-            CsvParser,
         )
 
         # Infer format dari filename extension
@@ -76,13 +75,13 @@ class BuiltinParser:
         elif format_hint == "xlsx":
             return XlsxParser().parse(data)
         elif format_hint in ("txt", "text"):
-            return TextParser().parse(data)
+            return TextLikeParser("txt").parse(data)
         elif format_hint in ("md", "markdown"):
-            return MarkdownParser().parse(data)
+            return TextLikeParser("md").parse(data)
         elif format_hint == "csv":
             return CsvParser().parse(data)
         elif format_hint in ("html", "htm"):
-            return HtmlParser().parse(data)
+            return TextLikeParser("html").parse(data)
 
         # Fallback: try magic bytes detection
         if data.startswith(b"%PDF"):
@@ -98,7 +97,7 @@ class BuiltinParser:
 
         # Last resort: treat as text
         logger.warning("Unknown format for %s, fallback to text parser", filename)
-        return TextParser().parse(data)
+        return TextLikeParser("txt").parse(data)
 
 
 class DoclingParserStub:
@@ -137,8 +136,6 @@ def get_parser_provider() -> ParserProvider:
         APP_DOCUMENT_PARSER: "builtin" (default) | "docling"
         APP_DOCUMENT_FALLBACK: fallback provider on error (future)
     """
-    from ai_asistent_core.config import get_settings
-
     s = get_settings()
     provider_name = getattr(s, "document_parser", "builtin")
 
