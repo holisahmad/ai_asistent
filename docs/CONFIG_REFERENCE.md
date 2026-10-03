@@ -89,7 +89,8 @@ make bench ARGS='--set reranker_enabled=false'
 | `APP_CHUNK_OVERLAP_TOKENS` | `int` | `64` | Overlap antar chunk (token) untuk kontinuitas konteks |
 | `APP_EMBEDDING_DIM` | `int` | `384` | Dimensi vektor embedding |
 | `APP_EMBEDDING_BATCH_SIZE` | `int` | `32` | Jumlah teks per batch embedding |
-| `APP_EMBEDDING_PROVIDER` | `str` | `local` | `local` (hash BoW, tanpa GPU) \| `openai` |
+| `APP_EMBEDDING_PROVIDER` | `str` | `local` | `local` (hash BoW, tanpa GPU) \| `fastembed` (semantik lokal, rekomendasi) \| `openai` |
+| `APP_FASTEMBED_MODEL` | `str` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Model fastembed; dipakai saat `embedding_provider=fastembed`. Di-cache di `~/.cache/fastembed` setelah download pertama (~235 MB). |
 | `APP_OPENAI_API_KEY` | `str\|None` | `None` | API key OpenAI; wajib bila `embedding_provider=openai` atau `llm_provider=openai` |
 | `APP_OPENAI_EMBEDDING_MODEL` | `str` | `text-embedding-3-small` | Model embedding OpenAI |
 
@@ -238,7 +239,8 @@ APP_API_RATE_LIMIT_PER_MIN=120
 APP_METRICS_TOKEN=                        # kosong = endpoint terbuka
 
 # --- Embedding ---
-APP_EMBEDDING_PROVIDER=local             # ganti ke openai untuk produksi
+APP_EMBEDDING_PROVIDER=fastembed         # lokal semantik (rekomendasi); ganti ke openai untuk cloud
+# APP_FASTEMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2  # default
 APP_OPENAI_API_KEY=                       # wajib bila provider=openai
 
 # --- LLM ---
@@ -279,8 +281,11 @@ APP_WEB_SEARCH_PROVIDER=none
    — jangan pernah commit ke repo; gunakan secret manager atau vault.
 2. **`APP_LLM_PROVIDER=local`** adalah stub deterministik untuk dev/test.
    Tidak cocok untuk produksi — ganti ke `openai` atau `openai_compat`.
-3. **`APP_RERANKER_ENABLED=true`** adalah default karena telah terbukti meningkatkan
+3. **`APP_EMBEDDING_PROVIDER=fastembed`** adalah pilihan default yang direkomendasikan.
+   Model di-cache di `~/.cache/fastembed` setelah download pertama (~235 MB).
+   Untuk cloud deployment tanpa disk besar, gunakan `openai` sebagai alternatif.
+4. **`APP_RERANKER_ENABLED=true`** adalah default karena telah terbukti meningkatkan
    kualitas retrieval. Lihat [`docs/UPGRADE_PLAN.md`](UPGRADE_PLAN.md) untuk detail metrik.
-4. **`APP_WEB_FALLBACK_MODE=internal_only`** default aman. Aktifkan `internal_plus_web`
+5. **`APP_WEB_FALLBACK_MODE=internal_only`** default aman. Aktifkan `internal_plus_web`
    hanya setelah mengonfigurasi provider pencarian dan memverifikasi SSRF protection.
-5. Semua nilai `float` menerima notasi titik desimal (`0.55`) atau integer (`1`).
+6. Semua nilai `float` menerima notasi titik desimal (`0.55`) atau integer (`1`).

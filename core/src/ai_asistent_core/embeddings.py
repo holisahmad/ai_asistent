@@ -14,7 +14,7 @@ model lokal (Ollama) tanpa mengubah pemanggil.
 import hashlib
 import math
 import re
-from typing import Protocol
+from typing import Any, Protocol
 
 from ai_asistent_core.config import get_settings
 
@@ -111,13 +111,55 @@ class OpenAIEmbedding:
         return [d.embedding for d in data]
 
 
+class FastEmbedEmbedding:
+    """Embedding semantik lokal via fastembed (ONNX, tanpa GPU/torch).
+
+    Model default: paraphrase-multilingual-MiniLM-L12-v2
+    - 384 dimensi, cocok dengan APP_EMBEDDING_DIM=384 (default)
+    - Mendukung Bahasa Indonesia dan 50+ bahasa lain
+    - ~235 MB, berjalan di CPU Intel/ARM Mac, Linux, Windows
+    - Model di-cache di ~/.cache/fastembed setelah download pertama
+
+    Set APP_EMBEDDING_PROVIDER=fastembed untuk mengaktifkan.
+    Set APP_FASTEMBED_MODEL untuk mengganti model (opsional).
+    """
+
+    _instance: "FastEmbedEmbedding | None" = None  # singleton per proses
+
+    def __init__(self, model_name: str, dim: int) -> None:
+        try:
+            from fastembed import TextEmbedding  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError(
+                "fastembed belum terinstal. Jalankan: uv pip install fastembed"
+            ) from exc
+        # Lazy init — model tidak di-load sampai embed() pertama kali dipanggil
+        self._model_name = model_name
+        self._model: Any = None
+        self.dim = dim
+
+    def _get_model(self) -> Any:
+        if self._model is None:
+            from fastembed import TextEmbedding
+            self._model = TextEmbedding(self._model_name)
+        return self._model
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        model = self._get_model()
+        return [list(emb) for emb in model.embed(texts)]
+
+
 def get_embedding_provider() -> EmbeddingProvider:
-    """Pilih provider dari settings (embedding_provider: local|openai)."""
+    """Pilih provider dari settings (embedding_provider: local|openai|fastembed)."""
     s = get_settings()
     if s.embedding_provider == "openai":
         if not s.openai_api_key:
             raise RuntimeError("APP_OPENAI_API_KEY belum diset")
         return OpenAIEmbedding(s.openai_api_key, s.openai_embedding_model, s.embedding_dim)
+    if s.embedding_provider == "fastembed":
+        model_name = getattr(s, "fastembed_model",
+                             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+        return FastEmbedEmbedding(model_name, s.embedding_dim)
     return LocalHashEmbedding(s.embedding_dim)
 
 
