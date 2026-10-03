@@ -2,9 +2,10 @@
 
 ACL: setiap pencarian difilter `workspace_id` di level SQL — konteks tidak
 pernah keluar dari workspace sebelum sampai ke LLM (roadmap: ACL sebelum
-konteks diberikan ke LLM). Query rewriting opsional menyusul; fusi sederhana
-deterministik (RRF + skor cosine) tanpa model eksternal, dilengkapi tahap
-reranker opsional (`rerank.py`) yang menyusun ulang kandidat terfusi.
+konteks diberikan ke LLM). Query rewriting opsional (Fase 3) untuk memperbaiki
+kueri "berisik"; fusi sederhana deterministik (RRF + skor cosine) tanpa model
+eksternal, dilengkapi tahap reranker opsional (`rerank.py`) yang menyusun ulang
+kandidat terfusi.
 """
 
 import re
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from ai_asistent_core.config import get_settings
 from ai_asistent_core.embeddings import embed_batch
+from ai_asistent_core.query_rewrite import rewrite_query, should_use_rewrite
 from ai_asistent_core.rerank import rerank_candidates
 from ai_asistent_core.vecstore import get_vector_store
 
@@ -141,43 +143,101 @@ def _fuse(
 def retrieve(
     db: Session, workspace_id: str, question: str, top_k: int | None = None
 ) -> list[RetrievedChunk]:
-    """Hybrid retrieval: dense + keyword → fusi → threshold → top_k."""
+    """Hybrid retrieval: dense + keyword → fusi → threshold → top_k.
+
+    Query rewriting (Fase 3, opsional) memperbaiki kueri "berisik" sebelum
+    retrieval, menghasilkan varian semantic + keyword yang dicoba sekaligus.
+    """
     s = get_settings()
     k = top_k if top_k is not None else s.retrieval_top_k
     n_candidates = s.retrieval_candidates
 
-    # 1) Dense: embed pertanyaan, KNN cosine (ACL di SQL via vecstore).
-    dense_matches = get_vector_store().search(
-        db, workspace_id, embed_batch([question])[0], n_candidates
-    )
-    dense = [
-        RetrievedChunk(
-            chunk_id=m.chunk_id,
-            file_id=m.file_id,
-            filename=m.filename,
-            content=m.content,
-            locator_type=m.locator_type,
-            locator_start=m.locator_start,
-            locator_end=m.locator_end,
-            dense_score=max(0.0, 1.0 - m.distance),
-            keyword_score=0.0,
-            score=0.0,
-        )
-        for m in dense_matches
-    ]
+    # 0) Query rewriting opsional (Fase 3): bersihkan + ekspansi sinonim.
+    queries_to_search = [question]  # Original selalu dipakai
+    if s.query_rewrite_enabled and should_use_rewrite(question):
+        rewritten = rewrite_query(question)
+        # Tambah varian semantic + keyword (jika berbeda dari original)
+        if rewritten.semantic and rewritten.semantic != question:
+            queries_to_search.append(rewritten.semantic)
+        if rewritten.keyword and rewritten.keyword != question:
+            queries_to_search.append(rewritten.keyword)
 
-    # 2) Keyword: FTS Postgres pada tabel chunk (ACL di SQL).
-    keyword = _keyword_search(db, workspace_id, question, n_candidates)
+    # 1) Dense: embed semua varian pertanyaan, KNN cosine (ACL di SQL via vecstore).
+    all_dense: list[RetrievedChunk] = []
+    embeddings = embed_batch(queries_to_search)
+    for q_idx, (query_variant, embedding) in enumerate(zip(queries_to_search, embeddings)):
+        dense_matches = get_vector_store().search(
+            db, workspace_id, embedding, n_candidates
+        )
+        for m in dense_matches:
+            c = RetrievedChunk(
+                chunk_id=m.chunk_id,
+                file_id=m.file_id,
+                filename=m.filename,
+                content=m.content,
+                locator_type=m.locator_type,
+                locator_start=m.locator_start,
+                locator_end=m.locator_end,
+                dense_score=max(0.0, 1.0 - m.distance),
+                keyword_score=0.0,
+                score=0.0,
+            )
+            # Jika hasil dari varian kedua/ketiga, boost sedikit (duplicate candidate)
+            if q_idx > 0 and any(c.chunk_id == existing.chunk_id for existing in all_dense):
+                # Sudah ada, tingkatkan dense_score sebagai konfirmasi
+                all_dense = [
+                    RetrievedChunk(
+                        chunk_id=e.chunk_id,
+                        file_id=e.file_id,
+                        filename=e.filename,
+                        content=e.content,
+                        locator_type=e.locator_type,
+                        locator_start=e.locator_start,
+                        locator_end=e.locator_end,
+                        dense_score=min(1.0, e.dense_score + 0.05) if e.chunk_id == c.chunk_id else e.dense_score,
+                        keyword_score=e.keyword_score,
+                        score=e.score,
+                    )
+                    for e in all_dense
+                ]
+            else:
+                all_dense.append(c)
+
+    # 2) Keyword: FTS Postgres pada tabel chunk (ACL di SQL), semua varian.
+    all_keyword: list[RetrievedChunk] = []
+    for query_variant in queries_to_search:
+        keyword_results = _keyword_search(db, workspace_id, query_variant, n_candidates)
+        for k_res in keyword_results:
+            # Jika sudah ada, tingkatkan keyword_score
+            existing = next((e for e in all_keyword if e.chunk_id == k_res.chunk_id), None)
+            if existing:
+                all_keyword = [
+                    RetrievedChunk(
+                        chunk_id=e.chunk_id,
+                        file_id=e.file_id,
+                        filename=e.filename,
+                        content=e.content,
+                        locator_type=e.locator_type,
+                        locator_start=e.locator_start,
+                        locator_end=e.locator_end,
+                        dense_score=e.dense_score,
+                        keyword_score=min(1.0, e.keyword_score + 0.05),
+                        score=e.score,
+                    )
+                    for e in all_keyword
+                ]
+            else:
+                all_keyword.append(k_res)
 
     # 3) Fusi + threshold.
-    fused = _fuse(dense, keyword, s.retrieval_min_score)
+    fused = _fuse(all_dense, all_keyword, s.retrieval_min_score)
 
     # 4) Fallback deterministik: bila semua di bawah threshold tapi ada
     #    kandidat, ambil terbaik agar jelukan "hampir relevan" tetap ikut
     #    (LLM tetap bisa menyatakan NO_ANSWER bila isinya tak menjawab).
-    if not fused and (dense or keyword):
+    if not fused and (all_dense or all_keyword):
         best = max(
-            (dense or keyword),
+            (all_dense or all_keyword),
             key=lambda c: c.score or c.dense_score or c.keyword_score,
         )
         fused = [best]

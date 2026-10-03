@@ -96,6 +96,29 @@ class CoreSettings(BaseSettings):
     # Panjang maksimum cuplikan ekstraktif (karakter); 0 = tidak dipotong.
     answer_max_chars: int = 600
 
+    # Fase 3 upgrade: query rewriting berbasis aturan.
+    # Buang frasa meta (carikan, tolong, di internet) + ekspansi sinonim.
+    # Default: false (off) — uplift harus terukur sebelum diaktifkan.
+    query_rewrite_enabled: bool = False
+
+    # Fase 4 upgrade: SSRF-safe fetch + URL validation.
+    # Validasi URL sebelum HTTP request: whitelist skema, tolak private IP,
+    # validasi redirect, batas size/timeout/content-type.
+    # Default: true (always on untuk web fallback).
+    url_validation_enabled: bool = True
+    # Max bytes untuk fetch page; default 200KB
+    url_fetch_max_bytes: int = 200_000
+    # Regex URL denylist (dipisah |); kosong = none
+    url_denylist_regex: str = ""
+    # Regex URL allowlist (dipisah |); kosong = all (setelah private IP check)
+    url_allowlist_regex: str = ""
+
+    # Fase 5 upgrade: external reader adapter (URL → content dengan provenance).
+    # Provider: http (default, HttpReader + safefetch) | firecrawl (future) | jina (future)
+    web_reader: str = "http"
+    # Timeout untuk external reader fetch (seconds)
+    web_reader_timeout_seconds: float = 8.0
+
     # Fase 7: web fallback
     web_fallback_mode: str = "internal_only"  # internal_only | internal_plus_web
     web_search_provider: str = "none"  # none | bing_rss | duckduckgo | searx | tavily

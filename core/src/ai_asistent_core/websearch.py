@@ -376,16 +376,27 @@ def sanitize_text(text: str, max_chars: int = 1200) -> str:
 
 
 def fetch_page_text(url: str, max_bytes: int = 200_000) -> str:
-    """Ambil HTML halaman & ekstrak teks kasar (tanpa JS). Gagal → string kosong."""
+    """Ambil HTML halaman & ekstrak teks kasar (tanpa JS). Gagal → string kosong.
+
+    Fase 4: SSRF-safe fetch — validasi URL sebelum HTTP request.
+    """
+    from ai_asistent_core.safefetch import safe_fetch
+
     try:
-        resp = _http_get(url, get_settings().web_search_timeout_seconds)
-        resp.raise_for_status()
-        raw = resp.content[:max_bytes]
-        page = raw.decode(resp.encoding or "utf-8", errors="replace")
+        page, success, reason = safe_fetch(
+            url,
+            timeout=get_settings().web_search_timeout_seconds,
+            max_bytes=max_bytes,
+        )
+        if not success:
+            logger.warning("fetch_page_text SSRF/validation gagal url=%s: %s", url, reason)
+            return ""
+
+        # Strip script/style tags, then HTML tags
         page = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", page, flags=re.S | re.I)
         page = re.sub(r"<[^>]+>", " ", page)
         return sanitize_text(page, max_chars=4000)
-    except (httpx.HTTPError, ValueError) as exc:
+    except (ValueError, Exception) as exc:
         logger.warning("fetch_page_text gagal url=%s: %s", url, exc)
         return ""
 
