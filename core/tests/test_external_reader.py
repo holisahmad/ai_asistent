@@ -159,10 +159,9 @@ class TestHtmlToText:
 
 
 class TestHttpReader:
-    """HttpReader async integration (mock HTTP)."""
+    """HttpReader integration (mock HTTP)."""
 
-    @pytest.mark.asyncio
-    async def test_read_success_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_read_success_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Mock safe_fetch to simulate successful read."""
 
         def mock_safe_fetch(
@@ -178,7 +177,7 @@ class TestHttpReader:
 
         try:
             reader = HttpReader()
-            doc = await reader.read("https://example.com")
+            doc = reader.read("https://example.com")
 
             assert doc.url == "https://example.com"
             assert doc.title == "Test Page"
@@ -189,8 +188,7 @@ class TestHttpReader:
         finally:
             er_module.safe_fetch = original
 
-    @pytest.mark.asyncio
-    async def test_read_failure_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_read_failure_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Mock safe_fetch to simulate SSRF/fetch failure."""
 
         def mock_safe_fetch(url: str, timeout: float = 8.0, max_bytes: int = 200_000):
@@ -203,7 +201,7 @@ class TestHttpReader:
 
         try:
             reader = HttpReader()
-            doc = await reader.read("http://localhost:8000/admin")
+            doc = reader.read("http://localhost:8000/admin")
 
             assert doc.url == "http://localhost:8000/admin"
             assert doc.content == ""  # Failed fetch

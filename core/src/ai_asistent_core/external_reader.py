@@ -41,7 +41,7 @@ class ExternalDocument:
 class ExternalReaderProtocol(Protocol):
     """Kontrak provider pembaca eksternal (URL → content)."""
 
-    async def read(self, url: str) -> ExternalDocument:
+    def read(self, url: str) -> ExternalDocument:
         """Baca URL dan kembalikan dokumen eksternal dengan provenance.
 
         Args:
@@ -56,7 +56,7 @@ class ExternalReaderProtocol(Protocol):
 class HttpReader:
     """Default external reader: HTTP GET via safefetch (Fase 4 SSRF protection)."""
 
-    async def read(
+    def read(
         self, url: str, timeout: float = 8.0, max_bytes: int = 200_000
     ) -> ExternalDocument:
         """Fetch URL, parse title, extract text.
