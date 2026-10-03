@@ -1,4 +1,4 @@
-.PHONY: help infra infra-down doctor install api worker web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench reembed
+.PHONY: help infra infra-down doctor install api worker web lint typecheck test test-db migrate migration smoke clean backup restore restore-drill scan-secrets scan-deps eval bench reembed seed-demo
 
 help:
 	@echo "AI Knowledge Assistant — perintah utama:"
@@ -25,6 +25,7 @@ help:
 	@echo "  make eval          Evaluasi kualitas RAG (ARGS='--write' untuk laporan)"
 	@echo "  make bench         Benchmark p50/p95/p99 (ARGS='--iterations 50')"
 	@echo "  make reembed       Hitung ulang embedding chunk (ARGS='--check' untuk cek)"
+	@echo "  make seed-demo     Buat/verifikasi akun demo lokal (APP_DEMO_PASSWORD='...' make seed-demo)"
 	@echo "  make clean         Hapus artefak build (.next, __pycache__) — perbaiki 'Cannot find module ./*.js' (hentikan 'make web' dulu, lalu start ulang)"
 
 infra:
@@ -109,3 +110,8 @@ reembed:
 clean:
 	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 	rm -rf frontend/.next 2>/dev/null || true
+
+# Akun demo lokal untuk login ke web UI (idempotent, aman diulang).
+# Password selalu lewat ENV — tidak ada kredensial hardcoded di repo.
+seed-demo:
+	APP_DEMO_PASSWORD="$(APP_DEMO_PASSWORD)" uv run --project backend python scripts/seed_demo_user.py

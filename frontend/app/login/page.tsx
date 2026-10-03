@@ -70,6 +70,8 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
             placeholder="nama@perusahaan.com"
+            autoComplete="email"
+            suppressHydrationWarning
           />
         </label>
 
@@ -82,6 +84,8 @@ export default function LoginPage() {
               onChange={(e) => setName(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
               placeholder="Nama lengkap"
+              autoComplete="name"
+              suppressHydrationWarning
             />
           </label>
         )}
@@ -96,6 +100,8 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
             placeholder="minimal 8 karakter"
+            autoComplete="current-password"
+            suppressHydrationWarning
           />
         </label>
 
@@ -109,6 +115,7 @@ export default function LoginPage() {
           type="submit"
           disabled={busy}
           className="w-full rounded-lg bg-sky-500 px-4 py-2.5 font-medium text-white transition hover:bg-sky-400 disabled:opacity-60"
+          suppressHydrationWarning
         >
           {busy ? "Memproses…" : mode === "login" ? "Masuk" : "Daftar & masuk"}
         </button>
@@ -120,6 +127,7 @@ export default function LoginPage() {
           setError(null);
         }}
         className="mt-6 text-sm text-slate-400 underline-offset-4 hover:text-sky-400 hover:underline"
+        suppressHydrationWarning
       >
         {mode === "login"
           ? "Belum punya akun? Daftar"
