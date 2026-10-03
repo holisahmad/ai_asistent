@@ -76,7 +76,7 @@ def _validate_url(url: str) -> tuple[bool, str]:
                 return False, f"Cannot resolve {parsed.hostname}"
 
             for _family, _socktype, _proto, _canonname, sockaddr in ips:
-                ip_str = sockaddr[0]
+                ip_str = str(sockaddr[0])
                 if _is_private_ip(ip_str):
                     return False, f"Private/reserved IP: {ip_str}"
         except socket.gaierror as e:
