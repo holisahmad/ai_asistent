@@ -20,26 +20,24 @@ type Props = { workspaceId: string };
 type Pending = { streaming: string; abort: AbortController | null };
 
 function KindBadge({ kind }: { kind: string | null }) {
-  if (!kind) return null;
+  if (!kind || kind === "grounded" || kind === "extractive") return null;
   if (kind === "no_answer") {
     return (
-      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-300">
-        Informasi belum tersedia
+      <span className="inline-flex items-center gap-1 text-xs text-amber-400/70">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-400/70" />
+        Tidak ditemukan di knowledge base
       </span>
     );
   }
   if (kind === "grounded_web") {
     return (
-      <span className="rounded-full bg-fuchsia-500/15 px-2 py-0.5 text-xs text-fuchsia-300">
-        Sumber web (eksternal)
+      <span className="inline-flex items-center gap-1 text-xs text-fuchsia-400/70">
+        <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400/70" />
+        Sumber web
       </span>
     );
   }
-  return (
-    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">
-      Grounded · dokumen internal
-    </span>
-  );
+  return null;
 }
 
 function CitationChip({
@@ -52,26 +50,23 @@ function CitationChip({
   onSelect: (c: Citation) => void;
 }) {
   const isWeb = citation.source_type === "web";
-  const label = isWeb ? `[${citation.idx}] web` : `[${citation.idx}] ${citation.filename}`;
-  const href = isWeb
-    ? citation.url ?? undefined
-    : citation.file_id
-      ? downloadUrl(workspaceId, citation.file_id)
-      : undefined;
+  // Nama file pendek tanpa extension
+  const shortName = isWeb
+    ? (citation.url ? new URL(citation.url).hostname : "web")
+    : citation.filename.replace(/\.[^.]+$/, "").slice(0, 28);
+
   return (
     <button
       onClick={() => onSelect(citation)}
-      onAuxClick={(e) => {
-        if (href && e.button === 1) window.open(href, "_blank");
-      }}
-      title={label}
-      className={`max-w-[16rem] truncate rounded-full border px-2.5 py-1 text-xs transition ${
+      title={isWeb ? citation.url ?? citation.filename : citation.filename}
+      className={`inline-flex max-w-[14rem] items-center gap-1 truncate rounded-md px-2 py-0.5 text-xs transition ${
         isWeb
-          ? "border-fuchsia-500/40 text-fuchsia-300 hover:bg-fuchsia-500/10"
-          : "border-slate-700 text-slate-300 hover:border-sky-500/60 hover:text-sky-300"
+          ? "bg-fuchsia-500/10 text-fuchsia-300 hover:bg-fuchsia-500/20"
+          : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
       }`}
     >
-      {label}
+      <span className="shrink-0 text-slate-500">[{citation.idx}]</span>
+      <span className="truncate">{shortName}</span>
     </button>
   );
 }
@@ -274,33 +269,33 @@ export default function ChatPanel({ workspaceId }: Props) {
               className={m.role === "user" ? "flex justify-end" : "flex justify-start"}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                className={`max-w-[88%] rounded-2xl px-4 py-3 ${
                   m.role === "user"
                     ? "bg-sky-500/20 text-slate-100"
-                    : "bg-slate-800/70 text-slate-100"
+                    : "bg-slate-800/60 text-slate-100"
                 }`}
               >
                 {m.role === "assistant" && (
-                  <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="mb-2.5 flex items-center justify-between gap-3">
                     <KindBadge kind={m.answer_kind} />
-                    <div className="flex items-center gap-1">
+                    <div className="ml-auto flex items-center gap-1">
                       <button
                         onClick={() => void copyMessage(m)}
                         title="Salin jawaban"
                         aria-label="Salin jawaban"
-                        className="rounded-md px-1.5 py-0.5 text-xs text-slate-400 hover:text-slate-200"
+                        className="rounded px-1.5 py-0.5 text-xs text-slate-500 hover:text-slate-300 transition"
                       >
-                        {copiedId === m.id ? "Tersalin ✓" : "Salin"}
+                        {copiedId === m.id ? "✓ Tersalin" : "Salin"}
                       </button>
                       <button
                         onClick={() => void rate(m, "up")}
                         title="Jawaban membantu"
                         aria-label="Jawaban membantu"
                         aria-pressed={m.feedback === "up"}
-                        className={`rounded-md px-1.5 py-0.5 text-xs ${
+                        className={`rounded px-1 py-0.5 text-sm transition ${
                           m.feedback === "up"
-                            ? "text-emerald-300"
-                            : "text-slate-500 hover:text-slate-300"
+                            ? "text-emerald-400"
+                            : "text-slate-600 hover:text-slate-300"
                         }`}
                       >
                         👍
@@ -310,10 +305,10 @@ export default function ChatPanel({ workspaceId }: Props) {
                         title="Jawaban kurang tepat"
                         aria-label="Jawaban kurang tepat"
                         aria-pressed={m.feedback === "down"}
-                        className={`rounded-md px-1.5 py-0.5 text-xs ${
+                        className={`rounded px-1 py-0.5 text-sm transition ${
                           m.feedback === "down"
-                            ? "text-red-300"
-                            : "text-slate-500 hover:text-slate-300"
+                            ? "text-red-400"
+                            : "text-slate-600 hover:text-slate-300"
                         }`}
                       >
                         👎
@@ -332,32 +327,47 @@ export default function ChatPanel({ workspaceId }: Props) {
                 ) : (
                   <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
                 )}
-                {m.citations.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {m.citations.map((c) => (
-                      <CitationChip
-                        key={`${m.id}-${c.idx}`}
-                        citation={c}
-                        workspaceId={workspaceId}
-                        onSelect={setSelectedCitation}
-                      />
-                    ))}
-                  </div>
-                )}
+                {/* Sitasi — deduplicate berdasarkan file_id + filename */}
+                {m.citations.length > 0 && (() => {
+                  const seen = new Set<string>();
+                  const unique = m.citations.filter((c) => {
+                    const key = c.source_type === "web" ? (c.url ?? c.filename) : (c.file_id ?? c.filename);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                  });
+                  return (
+                    <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-700/50 pt-2.5">
+                      {unique.map((c) => (
+                        <CitationChip
+                          key={`${m.id}-${c.idx}`}
+                          citation={c}
+                          workspaceId={workspaceId}
+                          onSelect={setSelectedCitation}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </article>
           ))}
 
           {pending && (
             <article className="flex justify-start">
-              <div className="max-w-[85%] rounded-2xl bg-slate-800/70 px-4 py-3">
+              <div className="max-w-[88%] rounded-2xl bg-slate-800/60 px-4 py-3">
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-sky-400" />
-                  <span className="text-xs text-slate-400">Menyusun jawaban…</span>
+                  <span className="flex gap-0.5">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-400 [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-400 [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-400 [animation-delay:300ms]" />
+                  </span>
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
-                  {pending.streaming}
-                </p>
+                {pending.streaming ? (
+                  <Markdown content={pending.streaming} />
+                ) : (
+                  <p className="text-sm text-slate-500">Mencari di knowledge base…</p>
+                )}
               </div>
             </article>
           )}
