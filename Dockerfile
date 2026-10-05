@@ -38,7 +38,8 @@ RUN uv pip install --system --no-cache \
     "python-pptx>=1.0" \
     "openpyxl>=3.1" \
     "httpx>=0.28" \
-    "minio>=7.2"
+    "minio>=7.2" \
+    "boto3>=1.34"
 
 # Install core package
 RUN pip install --no-cache-dir -e ./core

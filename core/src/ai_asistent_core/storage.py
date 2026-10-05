@@ -1,11 +1,11 @@
-"""Storage adapter — S3-compatible (MinIO / Supabase Storage) di balik interface."""
+"""Storage adapter — S3-compatible via boto3 (MinIO, Supabase Storage, AWS S3)."""
 
 import io
-from datetime import timedelta
 from typing import Protocol
 
-from minio import Minio
-from minio.error import S3Error
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError, EndpointResolutionError
 
 from ai_asistent_core.config import get_settings
 
@@ -29,83 +29,104 @@ class StorageUnavailableError(RuntimeError):
     pass
 
 
-class MinioStorage:
-    """Implementasi MinIO / S3-compatible dari StorageProtocol."""
+def _build_endpoint_url(endpoint: str, secure: bool) -> str:
+    """Normalkan endpoint ke URL lengkap untuk boto3."""
+    if endpoint.startswith("http://") or endpoint.startswith("https://"):
+        return endpoint
+    scheme = "https" if secure else "http"
+    return f"{scheme}://{endpoint}"
+
+
+class S3Storage:
+    """Storage adapter berbasis boto3 — kompatibel dengan MinIO, Supabase, AWS S3."""
 
     def __init__(self) -> None:
         s = get_settings()
 
-        # Validasi konfigurasi — endpoint kosong berarti storage tidak dikonfigurasi
-        if not s.minio_endpoint or s.minio_endpoint in ("localhost:9000", ""):
+        if not s.minio_endpoint or s.minio_endpoint in ("localhost:9000",):
             raise StorageUnavailableError(
                 "Object storage belum dikonfigurasi. "
-                "Set APP_MINIO_ENDPOINT, APP_MINIO_ACCESS_KEY, APP_MINIO_SECRET_KEY "
-                "di environment variables."
+                "Set APP_MINIO_ENDPOINT, APP_MINIO_ACCESS_KEY, APP_MINIO_SECRET_KEY."
             )
 
-        # Supabase Storage S3: endpoint-nya adalah URL lengkap, bukan host:port.
-        # Minio client butuh host tanpa scheme; kalau ada https:// strip dulu.
-        endpoint = s.minio_endpoint
-        secure = s.minio_secure
-        if endpoint.startswith("https://"):
-            endpoint = endpoint[len("https://"):]
-            secure = True
-        elif endpoint.startswith("http://"):
-            endpoint = endpoint[len("http://"):]
-            secure = False
+        endpoint_url = _build_endpoint_url(s.minio_endpoint, s.minio_secure)
 
-        self._client = Minio(
-            endpoint,
-            access_key=s.minio_access_key,
-            secret_key=s.minio_secret_key,
-            secure=secure,
+        self._client = boto3.client(
+            "s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=s.minio_access_key,
+            aws_secret_access_key=s.minio_secret_key,
+            region_name="ap-northeast-1",
+            config=Config(
+                signature_version="s3v4",
+                connect_timeout=10,
+                read_timeout=30,
+                retries={"max_attempts": 3, "mode": "standard"},
+            ),
         )
         self._bucket = s.minio_bucket
 
     def ensure_bucket(self) -> None:
-        """Buat bucket bila belum ada (idempotent). Skip untuk Supabase (bucket = folder)."""
+        """Buat bucket bila belum ada (idempotent). No-op bila bucket sudah ada."""
         try:
-            if not self._client.bucket_exists(self._bucket):
-                self._client.make_bucket(self._bucket)
-        except S3Error:
-            pass  # Supabase Storage mungkin tidak support ListBuckets
+            self._client.head_bucket(Bucket=self._bucket)
+        except ClientError as e:
+            code = e.response["Error"]["Code"]
+            if code in ("404", "NoSuchBucket"):
+                try:
+                    self._client.create_bucket(Bucket=self._bucket)
+                except ClientError:
+                    pass  # Mungkin sudah dibuat oleh request lain / Supabase manage sendiri
+            # 403 = bucket ada tapi kita tidak punya akses ListBucket — OK, lanjutkan
+        except Exception:
+            pass
 
     def get(self, key: str) -> bytes:
         """Baca isi object."""
-        resp = self._client.get_object(self._bucket, key)
         try:
-            return resp.read()
-        finally:
-            resp.close()
-            resp.release_conn()
+            resp = self._client.get_object(Bucket=self._bucket, Key=key)
+            return resp["Body"].read()
+        except ClientError as e:
+            raise StorageUnavailableError(f"Storage get error: {e}") from e
 
     def put(self, key: str, data: bytes, content_type: str) -> None:
         """Simpan object."""
-        self._client.put_object(
-            self._bucket,
-            key,
-            io.BytesIO(data),
-            length=len(data),
-            content_type=content_type or "application/octet-stream",
-        )
+        try:
+            self._client.put_object(
+                Bucket=self._bucket,
+                Key=key,
+                Body=io.BytesIO(data),
+                ContentType=content_type or "application/octet-stream",
+                ContentLength=len(data),
+            )
+        except ClientError as e:
+            raise StorageUnavailableError(f"Storage put error: {e}") from e
 
     def presign_get(self, key: str, expires_seconds: int) -> str:
         """URL GET presigned."""
-        return self._client.presigned_get_object(
-            self._bucket, key, expires=timedelta(seconds=expires_seconds)
+        return self._client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self._bucket, "Key": key},
+            ExpiresIn=expires_seconds,
         )
 
     def remove(self, key: str) -> None:
         """Hapus object."""
-        self._client.remove_object(self._bucket, key)
+        try:
+            self._client.delete_object(Bucket=self._bucket, Key=key)
+        except ClientError as e:
+            raise StorageUnavailableError(f"Storage delete error: {e}") from e
 
 
-_storage: MinioStorage | None = None
+# Backward-compat alias
+MinioStorage = S3Storage
+
+_storage: S3Storage | None = None
 
 
-def get_storage() -> MinioStorage:
+def get_storage() -> S3Storage:
     """Singleton storage adapter. Raise StorageUnavailableError bila tidak terkonfigurasi."""
     global _storage
     if _storage is None:
-        _storage = MinioStorage()
+        _storage = S3Storage()
     return _storage
