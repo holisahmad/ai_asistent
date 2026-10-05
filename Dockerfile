@@ -1,52 +1,60 @@
-# Dockerfile utama untuk Railway deployment — AI Knowledge Assistant Backend
-# Multi-stage: builder (uv install) → runtime (slim)
-
-# ---- Builder ----
-FROM python:3.12-slim AS builder
+# Dockerfile untuk Railway — single stage, pip install langsung
+FROM python:3.12-slim
 
 WORKDIR /app
+
+# Install system deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install uv
 RUN pip install --no-cache-dir uv==0.4.29
 
-# Copy dependency files (cache layer)
+# Copy semua source
 COPY pyproject.toml uv.lock ./
 COPY core/ ./core/
 COPY backend/ ./backend/
 COPY worker/ ./worker/
 
-# Install semua dependencies ke /app/.venv (eksplisit via UV_PROJECT_ENVIRONMENT)
-ENV UV_PROJECT_ENVIRONMENT=/app/.venv
-RUN uv sync --locked --no-dev
+# Install dependencies langsung ke system Python (tidak pakai venv)
+# --system agar packages masuk ke /usr/local/lib/python3.12/site-packages
+RUN uv pip install --system --no-cache \
+    "fastapi>=0.115" \
+    "uvicorn[standard]>=0.34" \
+    "pydantic>=2.10" \
+    "pydantic-settings>=2.7" \
+    "psycopg[binary]>=3.2" \
+    "sqlalchemy>=2.0" \
+    "alembic>=1.14" \
+    "redis>=5.2" \
+    "python-multipart>=0.0.20" \
+    "bcrypt>=4.2" \
+    "email-validator>=2.2" \
+    "pgvector>=0.3" \
+    "rq>=2.1" \
+    "pypdf>=5.1" \
+    "python-docx>=1.1" \
+    "python-pptx>=1.0" \
+    "openpyxl>=3.1" \
+    "httpx>=0.28" \
+    "minio>=7.2"
 
-# Verifikasi uvicorn ada (gagal build bila tidak ada)
-RUN /app/.venv/bin/uvicorn --version
+# Install core package
+RUN pip install --no-cache-dir -e ./core
 
-# ---- Runtime ----
-FROM python:3.12-slim AS runtime
+# Verifikasi uvicorn tersedia
+RUN python -m uvicorn --version
 
-# Keamanan: jalankan sebagai user non-root
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-
-WORKDIR /app
-
-# Salin venv, source, dan entrypoint dari builder
-COPY --from=builder /app/.venv    /app/.venv
-COPY --from=builder /app/core     /app/core
-COPY --from=builder /app/backend  /app/backend
-COPY docker-entrypoint.sh         /app/docker-entrypoint.sh
-
-RUN chmod +x /app/docker-entrypoint.sh
-
-ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH="/app/core/src" \
+ENV PYTHONPATH="/app/core/src" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
-
-USER appuser
 
 WORKDIR /app/backend
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
