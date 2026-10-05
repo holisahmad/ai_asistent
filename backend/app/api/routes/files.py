@@ -12,7 +12,7 @@ from typing import Annotated
 from ai_asistent_core.config import get_settings
 from ai_asistent_core.guards import scan_upload
 from ai_asistent_core.models import FILE_STATUSES, File, FileVersion, IngestionJob, utcnow
-from ai_asistent_core.storage import get_storage, object_key
+from ai_asistent_core.storage import StorageUnavailableError, get_storage, object_key
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi import File as FileParam
 from fastapi.responses import RedirectResponse
