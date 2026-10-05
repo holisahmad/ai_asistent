@@ -1,4 +1,5 @@
 # Dockerfile untuk Railway — single stage, pip install langsung
+# Cache-bust: v3 (boto3 storage fix)
 FROM python:3.12-slim
 
 WORKDIR /app
