@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from ai_asistent_core.config import csv_list, get_settings
+from ai_asistent_core.config import get_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -22,8 +22,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+def _build_cors_origins(csv: str) -> list[str]:
+    """Pecah CSV origin, pertahankan casing asli (URL case-sensitive)."""
+    return [item.strip() for item in csv.split(",") if item.strip()]
+
+
 def create_app() -> FastAPI:
     """App factory."""
+    settings = get_settings()
     app = FastAPI(
         title="AI Knowledge Assistant API",
         version=__version__,
@@ -31,7 +37,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=csv_list(get_settings().cors_origins_csv),
+        allow_origins=_build_cors_origins(settings.cors_origins_csv),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],

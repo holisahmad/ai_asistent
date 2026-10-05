@@ -61,6 +61,12 @@ web:
 migrate:
 	cd backend && uv run alembic upgrade head
 
+migrate-prod:
+	@if [ -z "$(APP_DATABASE_URL)" ]; then \
+	  echo "ERROR: export APP_DATABASE_URL terlebih dulu"; exit 1; \
+	fi
+	./scripts/migrate_prod.sh
+
 migration:
 	@if [ -z "$(m)" ]; then echo "Pemakaian: make migration m='pesan migrasi'"; exit 1; fi
 	cd backend && uv run alembic revision -m "$(m)"

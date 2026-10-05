@@ -1,4 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+// Di production (Vercel), gunakan URL relatif agar request diproxy lewat
+// Next.js rewrites (next.config.ts) ke Railway — tidak kena CORS.
+// Di local dev: gunakan NEXT_PUBLIC_API_BASE jika diset, fallback ke "".
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export type HealthStatus = {
   status: string;

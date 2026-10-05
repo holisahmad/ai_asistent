@@ -1,0 +1,11 @@
+[build]
+# Gunakan Dockerfile di root (bukan Nixpacks) agar uv + uvicorn tersedia
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway menginject $PORT secara otomatis — CMD di Dockerfile sudah handle ini
+startCommand = ""
+healthcheckPath = "/health/live"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

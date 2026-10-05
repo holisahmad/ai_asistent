@@ -1,317 +1,162 @@
 # Deployment Guide — AI Knowledge Assistant
 
-> **Fase 9 Production Hardening** — dokumen ini adalah satu-satunya sumber kebenaran
-> untuk deployment, operasi rutin, backup, dan scaling. Deployment harus dapat diulang
-> dari dokumen ini tanpa pengetahuan tacit.
-
-Lihat juga: [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) · [API.md](API.md) ·
-[INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) · [OPERATIONS.md](OPERATIONS.md)
+Stack: **Railway** (backend API) + **Supabase** (PostgreSQL) + **Vercel** (frontend Next.js)
 
 ---
 
-## 1. Prasyarat
+## 1. Supabase — Setup Database
 
-| Komponen | Versi minimum | Catatan |
-|---|---|---|
-| Docker Engine | 24+ | Docker Desktop untuk dev Mac |
-| Docker Compose | v2 plugin | `docker compose version` |
-| `uv` | 0.4+ | `pip install uv` atau `brew install uv` |
-| Node.js | 22+ | untuk frontend build |
-| Python | 3.12 | dikelola oleh `uv` |
-| PostgreSQL | 16 + pgvector | via Docker di dev; managed di prod |
-| Redis | 7 | via Docker di dev |
-| MinIO / S3 | API-compatible | via Docker di dev; AWS S3/GCS di prod |
+### Connection String
+Dari Supabase dashboard → **Settings → Database → Connection string → URI**:
+```
+postgresql://postgres:[PASSWORD]@db.[PROJECT_ID].supabase.co:5432/postgres
+```
+
+Salin URL ini. Tidak perlu ubah prefix — `config.py` otomatis konvert ke `postgresql+psycopg://`.
+
+**Project ID:** `nykffalzlxbmuatxgbhb`  
+**Host:** `db.nykffalzlxbmuatxgbhb.supabase.co`  
+**Port:** `5432`  
+**DB:** `postgres`  
+**User:** `postgres`
+
+> Untuk pooler (Supavisor) gunakan port **6543** dengan `?pgbouncer=true` di URL.
 
 ---
 
-## 2. Development Lokal (Mac/Linux)
+## 2. Railway — Environment Variables
 
-### Setup pertama kali
+Di Railway dashboard → project → **Variables**, set semua ini:
 
-```bash
-git clone https://github.com/holisahmad/ai_asistent.git
-cd ai_asistent
-
-# 1. Environment
-cp .env.example .env
-# Edit .env: set APP_LLM_PROVIDER, APP_OPENAI_API_KEY, dll
-
-# 2. Diagnosa environment
-make doctor            # cek Docker, port, .env, konektivitas
-make doctor ARGS=--fix # perbaiki otomatis (nyalakan Docker, buat .env, jalankan infra)
-
-# 3. Infra + install
-make infra             # Postgres + Redis + MinIO (docker compose up -d --wait)
-make install           # uv sync + npm install
-
-# 4. Migrasi DB (WAJIB sebelum API pertama kali)
-make migrate
-
-# 5. Jalankan services (tiap terminal terpisah)
-make api               # backend :8000
-make worker            # RQ worker
-make web               # frontend :3000
-
-# 6. Verifikasi
-make smoke             # GET /health/live + /health/ready
-```
-
-### Perintah harian
-
-```bash
-make lint              # ruff check semua package
-make typecheck         # mypy + tsc
-make test              # pytest + tsc
-make eval ARGS=--write # evaluasi kualitas RAG → docs/reports/eval-<stamp>.md
-make bench             # benchmark p50/p95
-make backup            # backup Postgres + MinIO → ./backups/<timestamp>/
-make scan-secrets      # pindai kredensial sebelum push
-```
-
----
-
-## 3. Produksi — Docker Compose
-
-### File yang dipakai
-
-```
-docker-compose.yml           # infra: Postgres, Redis, MinIO
-docker-compose.prod.yml      # override produksi: API, worker, nginx, certbot
-infra/
-  docker/
-    Dockerfile.api           # multi-stage build backend
-    Dockerfile.worker        # multi-stage build worker
-  nginx/
-    nginx.conf               # reverse proxy + TLS + security headers
-  certbot/                   # Let's Encrypt certificates (diisi Certbot)
-  systemd/
-    ai-backup.service        # backup harian via systemd
-    ai-backup.timer
-```
-
-### Deploy ke server Linux
-
-```bash
-# 1. Clone di server
-git clone https://github.com/holisahmad/ai_asistent.git /opt/ai_asistent
-cd /opt/ai_asistent
-
-# 2. Buat .env.prod (JANGAN gunakan .env dev!)
-cp .env.example .env.prod
-# Edit .env.prod: isi semua nilai produksi dari secret manager
-
-# 3. (Pertama kali) Dapatkan sertifikat TLS dengan Certbot
-docker run --rm \
-  -v $(pwd)/infra/certbot:/etc/letsencrypt \
-  -v $(pwd)/infra/certbot/webroot:/var/www/certbot \
-  certbot/certbot certonly --webroot \
-  -w /var/www/certbot -d yourdomain.com \
-  --email admin@yourdomain.com --agree-tos --non-interactive
-# Kemudian edit infra/nginx/nginx.conf: uncomment ssl_certificate*,
-# hapus baris ssl fallback self-signed
-
-# 4. Build images
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-
-# 5. Jalankan infra dulu
-docker compose -f docker-compose.yml up -d --wait postgres redis minio
-
-# 6. Migrasi DB
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm api \
-  uv run alembic upgrade head
-
-# 7. Naikan semua services
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
-
-# 8. Verifikasi
-curl https://yourdomain.com/health/ready
-curl https://yourdomain.com/version
-```
-
-### Update / Rilis baru
-
-```bash
-cd /opt/ai_asistent
-git pull origin main
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-# Migrasi DB jika ada migration baru
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm api \
-  uv run alembic upgrade head
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
-curl https://yourdomain.com/version   # konfirmasi versi baru
-```
-
----
-
-## 4. Variabel Produksi Wajib
-
-> Semua secret dikelola via environment injection atau secret manager (Vault, AWS SSM).
-> **Jangan pernah commit `.env.prod` ke repo.**
-
-| Variabel | Catatan |
+### Wajib
+| Variable | Nilai |
 |---|---|
-| `APP_DATABASE_URL` | Managed Postgres + TLS (`sslmode=require`) |
-| `APP_REDIS_URL` | Redis dengan password (`redis://:pass@host:6379/0`) |
-| `APP_MINIO_*` | Bucket privat; `MINIO_SECRET_KEY` dari secret manager |
-| `APP_OPENAI_API_KEY` | Dari secret manager; rotate berkala |
-| `APP_METRICS_TOKEN` | Random string 32+ karakter; wajib di produksi |
-| `APP_CORS_ORIGINS_CSV` | Hanya domain frontend resmi |
-| `POSTGRES_PASSWORD` | Bukan `ai_assistant` — password kuat |
-| `APP_LLM_PROVIDER` | `openai` atau `openai_compat`; bukan `local` |
-| `APP_EMBEDDING_PROVIDER` | `fastembed` (lokal) atau `openai` (cloud) |
+| `APP_DATABASE_URL` | `postgresql://postgres:Maduraonline254@db.nykffalzlxbmuatxgbhb.supabase.co:5432/postgres?sslmode=require` |
+| `APP_REDIS_URL` | URL Redis Railway yang auto-generate (lihat Redis service) |
 | `APP_ENVIRONMENT` | `production` |
+| `APP_LOG_LEVEL` | `INFO` |
 
-Lihat daftar lengkap: [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md)
-
----
-
-## 5. Backup & Restore
-
-### Backup manual
-
-```bash
-make backup
-# → ./backups/<timestamp>/{postgres.dump, minio/, metadata.json}
-```
-
-### Backup otomatis (server)
-
-```bash
-# Crontab — backup harian 02:00
-(crontab -l 2>/dev/null; echo "0 2 * * * cd /opt/ai_asistent && ./scripts/cron_backup.sh >> ./backups/cron.log 2>&1") | crontab -
-
-# Atau systemd timer
-sudo cp infra/systemd/ai-backup.{service,timer} /etc/systemd/system/
-sudo sed -i 's|/opt/ai_asistent|'$(pwd)'|' /etc/systemd/system/ai-backup.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now ai-backup.timer
-sudo systemctl list-timers ai-backup.timer   # verifikasi jadwal
-```
-
-### Verifikasi backup (drill)
-
-```bash
-make restore-drill
-# Output: RESTORE DRILL: PASS / FAIL
-# Jalankan mingguan di lingkungan staging
-```
-
-### Restore
-
-```bash
-# Restore ke database aktif (HATI-HATI — akan menimpa data!)
-make restore DIR=backups/20261003T020000Z
-
-# Restore ke database baru (aman untuk verifikasi)
-make restore DIR=backups/20261003T020000Z DB=ai_assistant_restore_test
-```
-
-### Retensi backup
-
-- **Lokal**: `BACKUP_RETAIN_DAYS=7` (default) di `scripts/cron_backup.sh`
-- **Produksi**: salin backup ke object storage eksternal (S3/GCS) + retensi 30 hari
-- **Database managed**: aktifkan PITR (Point-in-Time Recovery) untuk RPO < 1 jam
-
----
-
-## 6. Embedding & Reindex
-
-Model embedding menentukan kualitas retrieval. Bila `APP_EMBEDDING_PROVIDER` atau
-model berubah, **semua chunk harus di-reembed** — vektor lama tidak kompatibel.
-
-```bash
-# Cek apakah ada chunk yang perlu reembed
-make reembed ARGS=--check    # exit 1 bila ada stale; gunakan di CI/health check
-
-# Re-embed semua chunk
-make reembed
-
-# Re-embed workspace tertentu dengan batch size besar
-make reembed ARGS='--workspace <WS_ID> --batch 64'
-```
-
----
-
-## 7. CI/CD Pipeline
-
-`.github/workflows/ci.yml` mencakup 6 job paralel:
-
-| Job | Yang dicek |
+### CORS — wajib agar frontend bisa akses API
+| Variable | Nilai |
 |---|---|
-| `core` | ruff + mypy + pytest (23 source files) |
-| `backend` | ruff + mypy + migrate + pytest (dengan Postgres + MinIO) |
-| `worker` | ruff + mypy + pytest |
-| `frontend` | tsc + next build |
-| `security` | scan_secrets.sh (blocking) + pip-audit (non-blocking) |
-| `infra` | `docker compose config -q` |
+| `APP_CORS_ORIGINS_CSV` | `https://ai-asistent-nu.vercel.app` |
 
-**Quality gate RAG** (di job `backend`): recall@5 ≥ 0.8, MRR ≥ 0.6, citation ≥ 0.8,
-no-answer = 1.0, halusinasi = 0.
-
-Rilis: semua job hijau → merge ke `main` → tag `vX.Y.Z` → deploy.
-
----
-
-## 8. Benchmark & SLO
-
-```bash
-# Benchmark lokal (50 iterasi default)
-./scripts/benchmark.sh http://localhost:8000 50
-
-# Benchmark produksi
-./scripts/benchmark.sh https://yourdomain.com 100
-```
-
-SLO baseline (p95):
-
-| Endpoint | SLO |
+### Object Storage (MinIO/S3) — wajib untuk upload file
+| Variable | Nilai |
 |---|---|
-| `GET /health/live` | ≤ 200 ms |
-| `GET /health/ready` | ≤ 200 ms |
-| `GET /api/v1/workspaces` | ≤ 2000 ms |
-| `POST /api/v1/.../chat/stream` (first token) | ≤ 5000 ms |
+| `APP_MINIO_ENDPOINT` | endpoint S3/MinIO kamu |
+| `APP_MINIO_ACCESS_KEY` | access key |
+| `APP_MINIO_SECRET_KEY` | secret key |
+| `APP_MINIO_BUCKET` | `ai-assistant` |
+| `APP_MINIO_SECURE` | `true` |
+
+### LLM (opsional, bisa pakai `local` untuk testing)
+| Variable | Nilai |
+|---|---|
+| `APP_LLM_PROVIDER` | `openai` atau `local` |
+| `APP_OPENAI_API_KEY` | sk-... |
+| `APP_OPENAI_CHAT_MODEL` | `gpt-4o-mini` |
+
+### Embedding
+| Variable | Nilai |
+|---|---|
+| `APP_EMBEDDING_PROVIDER` | `local` (tanpa GPU/key) atau `openai` |
 
 ---
 
-## 9. Scaling
+## 3. Railway — Mendapatkan Public URL
 
-| Tahap | Pemicu | Langkah |
+Setelah deploy pertama berhasil:
+1. Railway dashboard → service → **Settings → Networking**
+2. Klik **Generate Domain** → copy URL (contoh: `https://ai-asistent-production.up.railway.app`)
+3. URL ini dipakai untuk `NEXT_BACKEND_URL` di Vercel
+
+---
+
+## 4. Vercel — Environment Variables
+
+Di Vercel dashboard → project **ai_asistent** → **Settings → Environment Variables**:
+
+| Variable | Environment | Nilai |
 |---|---|---|
-| 1 — pilot | < 50 user | Satu server: API + worker + infra Docker Compose |
-| 2 — scale API | CPU API > 70% | API stateless → scale horizontal; load balancer di depan nginx |
-| 3 — scale worker | Antrian RQ > 100 job | Tambah worker container; pisah queue ingestion/embedding |
-| 4 — DB read berat | query > 500 ms p95 | Read replica Postgres; tune HNSW `ef_search` |
-| 5 — vector scale | pgvector tidak cukup | Migrasi ke Qdrant via `VectorStoreProtocol`; reindex penuh |
+| `NEXT_BACKEND_URL` | Production | `https://ai-asistent-production.up.railway.app` |
+| `NEXT_BACKEND_URL` | Preview | `https://ai-asistent-production.up.railway.app` |
+| `NEXT_PUBLIC_API_BASE` | All | *(kosongkan / hapus)* |
+
+> `NEXT_BACKEND_URL` dipakai oleh `next.config.ts` untuk proxy rewrites server-side.  
+> `NEXT_PUBLIC_API_BASE` **tidak perlu diset** di production — biarkan kosong.
+
+### Vercel Build Settings
+Di **Settings → General**:
+- **Root Directory:** *(kosong — vercel.json sudah set buildCommand)*
+- **Framework:** Next.js
 
 ---
 
-## 10. Checklist Go-Live
+## 5. Vercel — Update Railway URL di vercel.json
 
-Sebelum mengekspos ke pengguna nyata, pastikan semua item ini terpenuhi:
-
+Edit `/vercel.json`, ganti URL Railway di bagian `rewrites`:
+```json
+"destination": "https://RAILWAY_URL_KAMU/api/:path*"
 ```
-Infrastructure
-[ ] HTTPS aktif (Certbot atau managed TLS)
-[ ] APP_METRICS_TOKEN diset (endpoint /metrics tidak publik)
-[ ] APP_MINIO_SECRET_KEY bukan default (bukan "minioadmin")
-[ ] POSTGRES_PASSWORD kuat dan bukan default
-[ ] Redis password diset (REDIS_PASSWORD)
-[ ] APP_CORS_ORIGINS_CSV hanya domain resmi
 
-Aplikasi
-[ ] APP_ENVIRONMENT=production
-[ ] APP_LLM_PROVIDER bukan "local" (bukan stub)
-[ ] make migrate berhasil di database produksi
-[ ] make smoke: /health/live + /health/ready hijau
-[ ] make eval: semua quality gate PASS
-[ ] make scan-secrets: PASS
-[ ] make scan-deps: PASS (atau temuan ditinjau)
+Lalu commit & push — Vercel auto-redeploy.
 
-Operasi
-[ ] Backup otomatis terjadwal (crontab atau systemd timer)
-[ ] make restore-drill: PASS pada data produksi
-[ ] Log tersedia (stdout → log aggregator atau file)
-[ ] /metrics terhubung ke Prometheus/Grafana (atau manual pantau)
-[ ] Kontak on-call terdaftar di INCIDENT_RESPONSE.md
-[ ] Runbook rollback sudah dibaca dan dipahami tim
+---
+
+## 6. Migrasi Database ke Supabase
+
+Jalankan dari local (sekali, saat pertama deploy):
+
+```bash
+export APP_DATABASE_URL="postgresql://postgres:Maduraonline254@db.nykffalzlxbmuatxgbhb.supabase.co:5432/postgres?sslmode=require"
+./scripts/migrate_prod.sh
 ```
+
+Atau via Railway: migrasi otomatis dijalankan di CMD Dockerfile setiap kali container start.
+
+---
+
+## 7. Verifikasi Akhir
+
+```bash
+# Cek backend hidup
+curl https://RAILWAY_URL/health/live
+
+# Cek DB & Redis
+curl https://RAILWAY_URL/health/ready
+
+# Cek frontend → proxy → backend
+curl https://ai-asistent-nu.vercel.app/health/live
+```
+
+Response yang benar:
+```json
+{"status":"alive"}
+{"status":"ready","checks":{"database":"ok","redis":"ok"}}
+```
+
+---
+
+## 8. Urutan Deploy
+
+1. ✅ Setup Supabase (sudah ada, password: `Maduraonline254`)
+2. ✅ Deploy Railway (Dockerfile) — set env vars di atas
+3. ✅ Jalankan migrasi (otomatis via CMD, atau manual via `migrate_prod.sh`)
+4. ✅ Copy Railway URL → set `NEXT_BACKEND_URL` di Vercel
+5. ✅ Update `vercel.json` rewrites dengan Railway URL yang benar
+6. ✅ Redeploy Vercel
+7. ✅ Buka `https://ai-asistent-nu.vercel.app/status` — semua hijau
+
+---
+
+## Troubleshooting
+
+| Error | Penyebab | Fix |
+|---|---|---|
+| `uvicorn: command not found` | Railway pakai Nixpacks, bukan Dockerfile | Pastikan `railway.json` punya `"builder": "DOCKERFILE"` |
+| `Unexpected token '<'...` | Frontend memanggil URL yang balik HTML (404) | Set `NEXT_BACKEND_URL` di Vercel ke URL Railway yang benar |
+| `database: unavailable` | `APP_DATABASE_URL` salah / belum diset | Cek Railway env vars, pastikan Supabase URL dengan `?sslmode=require` |
+| `redis: unavailable` | `APP_REDIS_URL` belum diset | Tambahkan Redis service di Railway, copy URL-nya |
+| CORS error di browser | `APP_CORS_ORIGINS_CSV` belum include Vercel domain | Set ke `https://ai-asistent-nu.vercel.app` di Railway |
+| Migration gagal di container | `PYTHONPATH` tidak include `core/src` | Sudah difix di Dockerfile via `ENV PYTHONPATH="/app/core/src"` |

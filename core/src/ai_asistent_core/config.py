@@ -8,6 +8,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
 
 
+def _normalize_db_url(url: str) -> str:
+    """Normalkan URL database agar selalu pakai driver psycopg (sync).
+
+    Supabase dan beberapa managed Postgres memberikan URL dengan prefix
+    ``postgresql://`` atau ``postgres://`` tanpa nama driver.
+    SQLAlchemy membutuhkan ``postgresql+psycopg://`` untuk psycopg3 sync.
+    """
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 class CoreSettings(BaseSettings):
     """Konfigurasi inti yang dipakai API & worker."""
 
@@ -23,6 +36,10 @@ class CoreSettings(BaseSettings):
     redis_url: str = "redis://localhost:6380/0"
     queue_name: str = "default"
 
+    def model_post_init(self, __context: object) -> None:
+        """Normalkan database_url setelah parsing agar driver selalu benar."""
+        object.__setattr__(self, "database_url", _normalize_db_url(self.database_url))
+
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
@@ -33,6 +50,8 @@ class CoreSettings(BaseSettings):
     presign_expiry_seconds: int = 900
 
     # CORS untuk frontend (CSV origin; dipakai backend)
+    # Production: set APP_CORS_ORIGINS_CSV di Railway env vars ke:
+    #   https://ai-asistent-nu.vercel.app,https://*.vercel.app
     cors_origins_csv: str = "http://localhost:3000"
 
     # Fase 9: ketahanan panggilan eksternal
