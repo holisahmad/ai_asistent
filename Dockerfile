@@ -43,7 +43,5 @@ WORKDIR /app/backend
 
 EXPOSE 8000
 
-# Start uvicorn langsung. Migrasi Alembic dijalankan via Railway Deploy Command
-# terpisah (atau manual via scripts/migrate_prod.sh) agar container tidak crash
-# bila DB belum siap saat cold-start.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --loop uvloop --access-log --log-level info"]
+# Gunakan path eksplisit ke uvicorn di venv — sh -c tidak inherit ENV PATH
+CMD ["sh", "-c", "/app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --loop uvloop --access-log --log-level info"]
