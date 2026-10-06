@@ -1,5 +1,5 @@
 # Dockerfile untuk Railway — single stage, pip install langsung
-# Cache-bust: v3 (boto3 storage fix)
+# Cache-bust: v4 (supabase S3 endpoint fix + version 0.2.0)
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install uv
 RUN pip install --no-cache-dir uv==0.4.29
+
+# Cache-bust arg — ubah nilai ini untuk force rebuild layer install
+ARG CACHE_BUST=v4
 
 # Copy semua source
 COPY pyproject.toml uv.lock ./

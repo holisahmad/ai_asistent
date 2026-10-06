@@ -30,11 +30,27 @@ class StorageUnavailableError(RuntimeError):
 
 
 def _build_endpoint_url(endpoint: str, secure: bool) -> str:
-    """Normalkan endpoint ke URL lengkap untuk boto3."""
+    """Normalkan endpoint ke URL lengkap untuk boto3.
+
+    Supabase Storage S3 API membutuhkan path /storage/v1/s3.
+    Endpoint bisa diberikan sebagai:
+      - hostname saja           : nykffalzlxbmuatxgbhb.storage.supabase.co
+      - hostname + path         : nykffalzlxbmuatxgbhb.storage.supabase.co/storage/v1/s3
+      - URL lengkap             : https://nykffalzlxbmuatxgbhb.storage.supabase.co/storage/v1/s3
+    """
+    # Sudah URL lengkap
     if endpoint.startswith("http://") or endpoint.startswith("https://"):
-        return endpoint
-    scheme = "https" if secure else "http"
-    return f"{scheme}://{endpoint}"
+        url = endpoint
+    else:
+        scheme = "https" if secure else "http"
+        url = f"{scheme}://{endpoint}"
+
+    # Supabase: tambahkan /storage/v1/s3 bila endpoint adalah *.supabase.co
+    # dan belum mengandung path tersebut
+    if "supabase.co" in url and "/storage/v1/s3" not in url:
+        url = url.rstrip("/") + "/storage/v1/s3"
+
+    return url
 
 
 class S3Storage:
