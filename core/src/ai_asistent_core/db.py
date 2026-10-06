@@ -18,17 +18,19 @@ def get_engine() -> Engine:
     """Lazily create the SQLAlchemy engine.
 
     Supabase Transaction Pooler (pgbouncer) tidak mendukung prepared statements.
-    psycopg3 membuat prepared statement otomatis, menyebabkan DuplicatePreparedStatement.
-    Fix: disable prepared statements sepenuhnya via prepare_threshold=0.
+    psycopg3 auto-creates prepared statements, dan pgbouncer tidak bisa track mereka
+    antar koneksi, menyebabkan InvalidSqlStatementName / DuplicatePreparedStatement.
+
+    Fix: gunakan NullPool + prepare_threshold=0 agar setiap request mendapat
+    koneksi bersih tanpa prepared statement yang tertinggal.
     """
     global _engine
     if _engine is None:
-        url = get_settings().database_url
+        from sqlalchemy.pool import NullPool
         _engine = create_engine(
-            url,
-            pool_pre_ping=True,
-            # Disable prepared statements — required for Supabase pgbouncer pooler
-            connect_args={"prepare_threshold": 0},
+            get_settings().database_url,
+            poolclass=NullPool,           # buat koneksi baru tiap request, tidak di-pool
+            connect_args={"prepare_threshold": 0},  # disable prepared statements
         )
     return _engine
 
