@@ -99,8 +99,14 @@ def ingest_file(db: Session, file_id: str, job_id: str) -> str:
         # 2) Parse per format dengan locator
         parsed = parse_file(file_row.filename, data)
 
+        # Bebaskan binary setelah parse — untuk PDF besar ini signifikan
+        del data
+
         # 3) Chunk token-aware
         chunks = chunk_sections(parsed.sections)
+
+        # Bebaskan sections setelah chunk
+        del parsed
 
         # 4) Idempoten: hapus dokumen/chunk versi sebelumnya untuk file ini
         for old in db.execute(
