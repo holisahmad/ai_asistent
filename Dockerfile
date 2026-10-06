@@ -1,5 +1,5 @@
 # Dockerfile untuk Railway — single stage, pip install langsung
-# Cache-bust: v4 (supabase S3 endpoint fix + version 0.2.0)
+# Cache-bust: v5 (add fastembed to backend for query embedding)
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -43,7 +43,8 @@ RUN uv pip install --system --no-cache \
     "openpyxl>=3.1" \
     "httpx>=0.28" \
     "minio>=7.2" \
-    "boto3>=1.34"
+    "boto3>=1.34" \
+    "fastembed>=0.3.6"
 
 # Install core package
 RUN pip install --no-cache-dir -e ./core
