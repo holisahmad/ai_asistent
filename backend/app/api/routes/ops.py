@@ -37,7 +37,10 @@ def version() -> dict[str, str]:
 @router.get("/config-check")
 def config_check() -> dict[str, str]:
     """Non-sensitive runtime config (untuk troubleshoot deployment)."""
+    import os
+    from pathlib import Path
     s = get_settings()
+    env_file_path = Path(__file__).resolve().parents[5] / ".env"
     return {
         "llm_provider": s.llm_provider,
         "openai_chat_model": s.openai_chat_model,
@@ -45,4 +48,7 @@ def config_check() -> dict[str, str]:
         "openai_api_key_set": "yes" if s.openai_api_key else "no",
         "embedding_provider": s.embedding_provider,
         "environment": s.environment,
+        "env_file_path": str(env_file_path),
+        "env_file_exists": str(env_file_path.exists()),
+        "APP_LLM_PROVIDER_raw": os.environ.get("APP_LLM_PROVIDER", "(not in os.environ)"),
     }
