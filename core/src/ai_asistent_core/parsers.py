@@ -243,6 +243,91 @@ class CsvParser:
         )
 
 
+class HtmlParser:
+    """Parser HTML: strip tag, ambil teks bersih per seksi."""
+
+    def parse(self, data: bytes) -> ParsedDocument:
+        try:
+            from html.parser import HTMLParser
+
+            class _Extractor(HTMLParser):
+                def __init__(self) -> None:
+                    super().__init__()
+                    self.texts: list[str] = []
+                    self._skip = False
+
+                def handle_starttag(self, tag: str, attrs: object) -> None:
+                    if tag in ("script", "style", "head"):
+                        self._skip = True
+
+                def handle_endtag(self, tag: str) -> None:
+                    if tag in ("script", "style", "head"):
+                        self._skip = False
+
+                def handle_data(self, data: str) -> None:
+                    if not self._skip and data.strip():
+                        self.texts.append(data.strip())
+
+            text = data.decode("utf-8", errors="replace")
+            ex = _Extractor()
+            ex.feed(text)
+            full = " ".join(ex.texts)
+            page_size = 4000
+            sections: list[Section] = []
+            for i, offset in enumerate(range(0, len(full), page_size), start=1):
+                chunk = full[offset : offset + page_size]
+                if chunk.strip():
+                    sections.append(
+                        Section(
+                            text=chunk,
+                            locator_type="char",
+                            locator_start=offset,
+                            locator_end=offset + len(chunk),
+                        )
+                    )
+            return ParsedDocument(
+                source_format="html", title=None,
+                sections=_blank_guard(sections), meta={}
+            )
+        except Exception:
+            # Fallback: treat as plain text
+            return TextLikeParser("html").parse(data)
+
+
+class JsonParser:
+    """Parser JSON: flatten ke teks readable per level top-level."""
+
+    def parse(self, data: bytes) -> ParsedDocument:
+        import json as _json
+
+        try:
+            text = data.decode("utf-8", errors="replace")
+            obj = _json.loads(text)
+            # Serialisasi kembali dengan indentasi agar mudah dibaca
+            pretty = _json.dumps(obj, ensure_ascii=False, indent=2)
+        except (_json.JSONDecodeError, Exception):
+            # Fallback: treat as plain text
+            pretty = data.decode("utf-8", errors="replace")
+
+        page_size = 4000
+        sections: list[Section] = []
+        for i, offset in enumerate(range(0, len(pretty), page_size), start=1):
+            chunk = pretty[offset : offset + page_size]
+            if chunk.strip():
+                sections.append(
+                    Section(
+                        text=chunk,
+                        locator_type="char",
+                        locator_start=offset,
+                        locator_end=offset + len(chunk),
+                    )
+                )
+        return ParsedDocument(
+            source_format="json", title=None,
+            sections=_blank_guard(sections), meta={}
+        )
+
+
 PARSERS: dict[str, Parser] = {
     ".pdf": PdfParser(),
     ".docx": DocxParser(),
@@ -251,6 +336,8 @@ PARSERS: dict[str, Parser] = {
     ".txt": TextLikeParser("txt"),
     ".md": TextLikeParser("md"),
     ".csv": CsvParser(),
+    ".html": HtmlParser(),
+    ".json": JsonParser(),
 }
 
 SUPPORTED_EXTENSIONS = set(PARSERS.keys())
