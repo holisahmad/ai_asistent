@@ -25,8 +25,8 @@ def enqueue_ingest(file_id: str, job_id: str) -> bool:
             "worker.jobs.ingest",
             file_id,
             job_id,
-            retry=Retry(max=3, interval=[5, 15, 60]),
-            job_timeout=600,
+            retry=Retry(max=3, interval=[30, 60, 120]),
+            job_timeout=1800,  # 30 menit — cukup untuk PDF 50MB
         )
         return True
     except Exception as exc:  # noqa: BLE001 - Redis down tidak boleh gagalkan upload

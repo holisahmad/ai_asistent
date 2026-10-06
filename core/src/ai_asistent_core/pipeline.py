@@ -142,16 +142,23 @@ def ingest_file(db: Session, file_id: str, job_id: str) -> str:
         db.add_all(chunk_rows)
         db.flush()
 
-        # 6) Embedding batch + upsert ke pgvector
+        # 6) Embedding batch + upsert ke pgvector — dilakukan per-batch
+        #    agar tidak OOM pada file besar (PDF 10MB+ bisa 200+ chunks).
         if chunk_rows:
-            vectors = embed_batch([c.content for c in chunk_rows])
-            get_vector_store().upsert(
-                db,
-                [
-                    {"chunk_id": row.id, "embedding": vec}
-                    for row, vec in zip(chunk_rows, vectors, strict=True)
-                ],
-            )
+            EMBED_CHUNK = 8  # embed 8 chunks sekali, upsert langsung, bebaskan memory
+            vs = get_vector_store()
+            for batch_start in range(0, len(chunk_rows), EMBED_CHUNK):
+                batch = chunk_rows[batch_start : batch_start + EMBED_CHUNK]
+                vectors = embed_batch([c.content for c in batch])
+                vs.upsert(
+                    db,
+                    [
+                        {"chunk_id": row.id, "embedding": vec}
+                        for row, vec in zip(batch, vectors, strict=True)
+                    ],
+                )
+                # Commit per-batch agar tidak hold transaksi terlalu lama
+                db.flush()
 
         # 7) Selesai
         file_row.status = "indexed"
