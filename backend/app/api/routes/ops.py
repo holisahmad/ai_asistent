@@ -52,3 +52,53 @@ def config_check() -> dict[str, str]:
         "env_file_exists": str(env_file_path.exists()),
         "APP_LLM_PROVIDER_raw": os.environ.get("APP_LLM_PROVIDER", "(not in os.environ)"),
     }
+
+
+@router.post("/ops/requeue-stuck")
+def requeue_stuck(
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    """Re-queue semua file yang stuck di 'processing' atau 'queued' tanpa job aktif.
+
+    Hanya bisa dipanggil dengan metrics_token (atau bila token tidak diset).
+    Endpoint ini dipakai admin untuk recovery setelah OOM kill.
+    """
+    from sqlalchemy.orm import Session
+    from ai_asistent_core.models import File, IngestionJob
+    from sqlalchemy import select
+    from app.queue import enqueue_ingest
+    import uuid
+    from ai_asistent_core.models import utcnow
+    from ai_asistent_core.db import get_session_factory
+
+    token = get_settings().metrics_token
+    if token and authorization != f"Bearer {token}":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token tidak valid")
+
+    db: Session = get_session_factory()()
+    queued = []
+    try:
+        # File stuck di processing atau queued tanpa job aktif di Redis
+        stuck_files = db.execute(
+            select(File).where(
+                File.status.in_(["processing", "failed"]),
+                File.is_deleted.is_(False),
+            )
+        ).scalars().all()
+
+        for f in stuck_files:
+            f.status = "queued"
+            f.error = None
+            job = IngestionJob(
+                file_id=f.id, job_type="reindex", status="queued"
+            )
+            db.add(job)
+            db.flush()
+            enqueue_ingest(f.id, job.id)
+            queued.append({"file_id": f.id, "filename": f.filename})
+
+        db.commit()
+    finally:
+        db.close()
+
+    return {"requeued": len(queued), "files": queued}
