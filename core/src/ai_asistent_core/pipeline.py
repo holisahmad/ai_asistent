@@ -105,8 +105,11 @@ def ingest_file(db: Session, file_id: str, job_id: str) -> str:
         # 3) Chunk token-aware
         chunks = chunk_sections(parsed.sections)
 
-        # Bebaskan sections setelah chunk
-        del parsed
+        # Simpan metadata yang masih dibutuhkan, lalu bebaskan parsed dari memory
+        source_format = parsed.source_format
+        doc_title = _sanitize_text(parsed.title or file_row.filename)
+        locator_type = chunks[0].locator_type if chunks else "char"
+        del parsed  # bebaskan sections dari memory (PDF besar ~3MB teks)
 
         # 4) Idempoten: hapus dokumen/chunk versi sebelumnya untuk file ini
         for old in db.execute(
@@ -120,11 +123,11 @@ def ingest_file(db: Session, file_id: str, job_id: str) -> str:
             file_id=file_id,
             version=file_row.current_version,
             workspace_id=file_row.workspace_id,
-            source_format=parsed.source_format,
-            title=_sanitize_text(parsed.title or file_row.filename),
-            locator_type=(chunks[0].locator_type if chunks else "char"),
-            char_count=sum(len(s.text) for s in parsed.sections),
-            parser_meta_json=json.dumps(parsed.meta, ensure_ascii=False),
+            source_format=source_format,
+            title=doc_title,
+            locator_type=locator_type,
+            char_count=sum(len(c.content) for c in chunks),
+            parser_meta_json="{}",
         )
         db.add(document)
         db.flush()
@@ -173,7 +176,7 @@ def ingest_file(db: Session, file_id: str, job_id: str) -> str:
         job.finished_at = _now()
         db.commit()
         logger.info(
-            "ingested file=%s fmt=%s chunks=%d", file_id, parsed.source_format, len(chunk_rows)
+            "ingested file=%s fmt=%s chunks=%d", file_id, source_format, len(chunk_rows)
         )
         return "indexed"
 
