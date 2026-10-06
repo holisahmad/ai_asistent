@@ -8,6 +8,7 @@ menggunakan implementasi yang persis sama.
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -28,6 +29,26 @@ from ai_asistent_core.storage import get_storage
 from ai_asistent_core.vecstore import get_vector_store
 
 logger = logging.getLogger("ai_asistent_core.pipeline")
+
+# Karakter yang tidak boleh masuk PostgreSQL text field
+_NUL_RE = re.compile(r"\x00")
+_CONTROL_RE = re.compile(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _sanitize_text(text: str) -> str:
+    """Hapus NUL bytes dan karakter kontrol tidak valid dari teks.
+
+    PostgreSQL text field menolak NUL (0x00). PDF/OCR kadang menghasilkan
+    karakter kontrol lain yang juga tidak berguna untuk RAG.
+    - \\x00 : NUL — dihapus sepenuhnya
+    - \\x01-\\x08, \\x0b, \\x0c, \\x0e-\\x1f, \\x7f : kontrol C0 (bukan tab/LF/CR)
+      → diganti spasi agar kata tidak menempel
+    """
+    text = _NUL_RE.sub("", text)
+    text = _CONTROL_RE.sub(" ", text)
+    # Normalisasi whitespace berlebih yang muncul akibat substitusi
+    text = re.sub(r"  +", " ", text)
+    return text
 
 
 def _now() -> datetime:
@@ -94,7 +115,7 @@ def ingest_file(db: Session, file_id: str, job_id: str) -> str:
             version=file_row.current_version,
             workspace_id=file_row.workspace_id,
             source_format=parsed.source_format,
-            title=parsed.title or file_row.filename,
+            title=_sanitize_text(parsed.title or file_row.filename),
             locator_type=(chunks[0].locator_type if chunks else "char"),
             char_count=sum(len(s.text) for s in parsed.sections),
             parser_meta_json=json.dumps(parsed.meta, ensure_ascii=False),
@@ -109,7 +130,7 @@ def ingest_file(db: Session, file_id: str, job_id: str) -> str:
                 file_id=file_id,
                 version=file_row.current_version,
                 seq=i,
-                content=c.content,
+                content=_sanitize_text(c.content),
                 char_start=c.char_start,
                 char_end=c.char_end,
                 locator_type=c.locator_type,

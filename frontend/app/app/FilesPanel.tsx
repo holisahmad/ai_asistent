@@ -60,28 +60,43 @@ export default function FilesPanel({ workspaceId, canContribute, canDelete }: Pr
     return () => window.clearInterval(timer);
   }, [files, refresh]);
 
-  async function handleUpload(file: File) {
+  async function handleUpload(files: FileList | File[]) {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
     setBusy(true);
     setError(null);
     setNotice(null);
-    try {
-      const created = await uploadFile(workspaceId, file);
-      setNotice(`${created.filename} diunggah — sedang diproses.`);
-      await refresh();
-    } catch (err) {
-      const detail =
-        err instanceof ApiError
-          ? err.status === 409
-            ? "Isi file identik sudah ada di workspace ini."
-            : err.detail
-          : err instanceof Error
-            ? err.message
-            : "Upload gagal";
-      setError(detail);
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
+    const results: string[] = [];
+    const errors: string[] = [];
+    for (const file of fileArray) {
+      try {
+        const created = await uploadFile(workspaceId, file);
+        results.push(created.filename);
+      } catch (err) {
+        const detail =
+          err instanceof ApiError
+            ? err.status === 409
+              ? `${file.name}: isi file identik sudah ada.`
+              : `${file.name}: ${err.detail}`
+            : err instanceof Error
+              ? `${file.name}: ${err.message}`
+              : `${file.name}: upload gagal`;
+        errors.push(detail);
+      }
     }
+    if (results.length > 0) {
+      setNotice(
+        results.length === 1
+          ? `${results[0]} diunggah — sedang diproses.`
+          : `${results.length} file diunggah — sedang diproses.`
+      );
+    }
+    if (errors.length > 0) {
+      setError(errors.join("\n"));
+    }
+    await refresh();
+    setBusy(false);
+    if (inputRef.current) inputRef.current.value = "";
   }
 
   async function run(action: () => Promise<unknown>, okMessage: string) {
@@ -109,7 +124,7 @@ export default function FilesPanel({ workspaceId, canContribute, canDelete }: Pr
         <div>
           <h2 className="font-semibold text-white">Dokumen workspace</h2>
           <p className="text-sm text-slate-400">
-            PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, HTML, JSON · maks 100 MB
+            PDF, DOCX, PPTX, XLSX, TXT, MD, CSV, HTML, JSON · maks 50 MB
           </p>
         </div>
         {canContribute && (
@@ -124,11 +139,12 @@ export default function FilesPanel({ workspaceId, canContribute, canDelete }: Pr
               ref={inputRef}
               type="file"
               accept={accepted}
+              multiple
               disabled={busy}
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleUpload(f);
+                if (e.target.files && e.target.files.length > 0)
+                  void handleUpload(e.target.files);
               }}
             />
             {busy ? "Mengunggah…" : "Unggah dokumen"}
@@ -146,14 +162,14 @@ export default function FilesPanel({ workspaceId, canContribute, canDelete }: Pr
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) void handleUpload(f);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0)
+              void handleUpload(e.dataTransfer.files);
           }}
           className={`mt-3 rounded-lg border border-dashed px-4 py-6 text-center text-sm transition ${
             dragging ? "border-sky-400 bg-sky-500/5 text-sky-200" : "border-slate-700 text-slate-400"
           }`}
         >
-          Tarik & lepas file ke sini, atau klik “Unggah dokumen”.
+          Tarik & lepas satu atau beberapa file ke sini, atau klik “Unggah dokumen”.
         </div>
       )}
 
