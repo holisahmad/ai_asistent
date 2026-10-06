@@ -78,10 +78,10 @@ def requeue_stuck(
     db: Session = get_session_factory()()
     queued = []
     try:
-        # File stuck di processing atau queued tanpa job aktif di Redis
+        # File stuck di processing/failed/queued yang perlu di-re-enqueue ke Redis
         stuck_files = db.execute(
             select(File).where(
-                File.status.in_(["processing", "failed"]),
+                File.status.in_(["processing", "failed", "queued"]),
                 File.is_deleted.is_(False),
             )
         ).scalars().all()
