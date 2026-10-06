@@ -17,27 +17,18 @@ _redis: Redis | None = None
 def get_engine() -> Engine:
     """Lazily create the SQLAlchemy engine.
 
-    Supabase Transaction Pooler (pgbouncer, port 6543) tidak mendukung
-    prepared statements. psycopg3 membuat prepared statement secara otomatis
-    setelah threshold tertentu, menyebabkan DuplicatePreparedStatement error.
-    Fix: set prepare_threshold=0 via connect_args untuk disable sepenuhnya.
+    Supabase Transaction Pooler (pgbouncer) tidak mendukung prepared statements.
+    psycopg3 membuat prepared statement otomatis, menyebabkan DuplicatePreparedStatement.
+    Fix: disable prepared statements sepenuhnya via prepare_threshold=0.
     """
     global _engine
     if _engine is None:
         url = get_settings().database_url
-        # Cek apakah ini Supabase Transaction Pooler (port 6543 atau pooler URL)
-        is_pooler = (
-            ".pooler.supabase.com" in url
-            or ":6543/" in url
-        )
-        connect_args: dict = {}
-        if is_pooler:
-            # Disable prepared statements untuk pgbouncer compatibility
-            connect_args["prepare_threshold"] = 0
         _engine = create_engine(
             url,
             pool_pre_ping=True,
-            connect_args=connect_args,
+            # Disable prepared statements — required for Supabase pgbouncer pooler
+            connect_args={"prepare_threshold": 0},
         )
     return _engine
 
