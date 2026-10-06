@@ -195,7 +195,13 @@ class OpenAICompatLLM:
         self._timeout = timeout
 
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._api_key}"}
+        return {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # User-Agent diperlukan untuk melewati Cloudflare tunnel challenge
+            "User-Agent": "Mozilla/5.0 (compatible; OpenAI-Python/1.0)",
+        }
 
     def _payload(self, question: str, contexts: list[str]) -> dict[str, Any]:
         return {
