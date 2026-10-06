@@ -32,3 +32,17 @@ def metrics(
 def version() -> dict[str, str]:
     """Versi aplikasi (untuk deployment & rollback tracking)."""
     return {"version": __version__, "environment": get_settings().environment}
+
+
+@router.get("/config-check")
+def config_check() -> dict[str, str]:
+    """Non-sensitive runtime config (untuk troubleshoot deployment)."""
+    s = get_settings()
+    return {
+        "llm_provider": s.llm_provider,
+        "openai_chat_model": s.openai_chat_model,
+        "openai_base_url": s.openai_base_url or "(not set)",
+        "openai_api_key_set": "yes" if s.openai_api_key else "no",
+        "embedding_provider": s.embedding_provider,
+        "environment": s.environment,
+    }
