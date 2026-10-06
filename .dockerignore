@@ -1,0 +1,35 @@
+# Jangan kirim file sensitif dan tidak perlu ke Docker build context
+.env
+.env.*
+!.env.example
+
+# VCS
+.git
+.github
+.gitignore
+
+# Python cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/venv
+
+# Node
+**/node_modules
+**/.next
+
+# Dev tools
+.serena
+.claude
+.claude-flow
+.DS_Store
+
+# Docs & scripts (tidak dibutuhkan di runtime)
+docs/
+scripts/
+*.md
+!README.md
