@@ -48,35 +48,49 @@ class PgVectorStore:
     """Implementasi pgvector."""
 
     def upsert(self, db: Session, rows: list[dict[str, Any]]) -> None:
-        """Simpan embedding chunk (update yang ada, sisipkan baru)."""
+        """Simpan embedding chunk (update yang ada, sisipkan baru).
+
+        Gunakan string literal vector langsung di SQL (bukan parameter binding)
+        karena Supabase Transaction Pooler (pgbouncer port 6543) tidak support
+        prepared statements yang di-generate psycopg3 untuk parameter :vec.
+        """
         for row in rows:
+            vec_literal = _vec_literal(row["embedding"])
+            chunk_id = row["chunk_id"]
+            # Vector di-inline sebagai literal string — aman karena _vec_literal
+            # hanya menghasilkan float dan tanda kurung/koma, tidak ada SQL injection.
             db.execute(
                 text(
-                    "UPDATE document_chunks SET embedding = CAST(:vec AS vector) "
-                    "WHERE id = :chunk_id"
+                    f"UPDATE document_chunks SET embedding = '{vec_literal}'::vector "
+                    f"WHERE id = :chunk_id"
                 ),
-                {"vec": _vec_literal(row["embedding"]), "chunk_id": row["chunk_id"]},
+                {"chunk_id": chunk_id},
             )
 
     def search(
         self, db: Session, workspace_id: str, query_vector: list[float], top_k: int
     ) -> list[VectorMatch]:
-        """K-NN cosine distance dalam satu workspace (ACL di level query)."""
+        """K-NN cosine distance dalam satu workspace (ACL di level query).
+
+        Vector di-inline sebagai literal untuk menghindari DuplicatePreparedStatement
+        di Supabase Transaction Pooler (pgbouncer).
+        """
+        vec_literal = _vec_literal(query_vector)
         rows = db.execute(
             text(
-                """
+                f"""
                 SELECT c.id, c.file_id, c.document_id, c.content, c.locator_type,
                        c.locator_start, c.locator_end,
-                       c.embedding <=> CAST(:vec AS vector) AS distance,
+                       c.embedding <=> '{vec_literal}'::vector AS distance,
                        COALESCE(f.filename, '') AS filename
                 FROM document_chunks c
                 LEFT JOIN files f ON f.id = c.file_id
                 WHERE c.workspace_id = :ws_id AND c.embedding IS NOT NULL
-                ORDER BY c.embedding <=> CAST(:vec AS vector)
+                ORDER BY c.embedding <=> '{vec_literal}'::vector
                 LIMIT :k
                 """
             ),
-            {"vec": _vec_literal(query_vector), "ws_id": workspace_id, "k": top_k},
+            {"ws_id": workspace_id, "k": top_k},
         ).mappings().all()
         return [
             VectorMatch(
